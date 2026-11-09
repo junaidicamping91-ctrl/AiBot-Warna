@@ -1,10 +1,20 @@
 """Chapter 1.2 - OpenCV Image Processing: deteksi & klasifikasi warna.
 
-Alur: blur -> BGR2HSV -> threshold per warna -> morfologi -> kontur terbesar
+Alur: blur -> BGR2HSV -> threshold per warna -> morfologi -> kontur
 -> centroid/bounding box -> voting multi-frame (anti kedip).
 
 Modifikasi dari poster: yang dicari bukan lagi objek hasil YOLO, melainkan
-WARNA dominan. Hasilnya dipakai untuk (a) audio, (b) error bidikan ke Arduino.
+WARNA. Hasilnya dipakai untuk (a) audio, (b) error bidikan ke Arduino.
+
+Dua API:
+  * ``detect()``     -> SATU warna dominan (kompatibel dengan main.py / PID).
+  * ``detect_all()`` -> SEMUA warna yang hadir di frame sekaligus, dipakai
+    mode FULL WARNA pada aplikasi Streamlit.
+
+Agar warna dengan rentang HSV yang tumpang tindih (mis. merah vs magenta,
+oranye vs coklat, atau putih vs abu) tidak dihitung dua kali, dipakai
+**label image berprioritas**: setiap piksel hanya diklaim oleh warna pertama
+yang cocok sesuai urutan di ``config/colors.json``.
 """
 from __future__ import annotations
 
@@ -89,9 +99,10 @@ class ColorVoter:
 
 
 class ColorDetector:
-    """Deteksi warna dominan pada frame BGR."""
+    """Deteksi warna pada frame BGR (satu dominan ATAU semua sekaligus)."""
 
-    def __init__(self, palette: ColorPalette, settings: dict | None = None):
+    def __init__(self, palette: ColorPalette, settings: dict | None = None,
+                 include_neutral: bool | None = None):
         self.palette = palette
         cfg = (settings or {}).get("detection", settings or {})
         self.min_area_ratio = float(cfg.get("min_area_ratio", 0.005))
@@ -99,6 +110,13 @@ class ColorDetector:
         self.morph_iterations = int(cfg.get("morph_iterations", 2))
         self.confidence_ref = float(cfg.get("confidence_ref_ratio", 0.15))
         self.confidence_threshold = float(cfg.get("confidence_threshold", 45.0))
+        # Default False supaya main.py / PID tidak "membidik" dinding putih.
+        self.include_neutral = (bool(cfg.get("include_neutral", False))
+                                if include_neutral is None else bool(include_neutral))
+
+    def active_specs(self, include_neutral: bool | None = None):
+        return self.palette.for_detection(
+            self.include_neutral if include_neutral is None else include_neutral)
 
     # ------------------------------------------------------------------ internal
     def _build_mask(self, hsv: np.ndarray, spec: ColorSpec) -> np.ndarray:
@@ -118,61 +136,80 @@ class ColorDetector:
         return combined
 
     # ------------------------------------------------------------------ public
-    def detect(self, frame: np.ndarray) -> Detection:
+    def detect_all(self, frame: np.ndarray,
+                   include_neutral: bool | None = None) -> list[Detection]:
+        """Kembalikan SEMUA warna yang terdeteksi, diurutkan sesuai luas blob.
+
+        Tiap piksel hanya menjadi milik satu warna (prioritas = urutan tabel),
+        sehingga beberapa objek berwarna berbeda bisa hadir bersamaan tanpa
+        saling menimpa dan tanpa dihitung ganda.
+        """
         import cv2
 
         if frame is None or frame.size == 0:
-            return Detection()
+            return []
         h, w = frame.shape[:2]
         frame_area = float(w * h)
+        specs = self.active_specs(include_neutral)
 
         blurred = cv2.GaussianBlur(frame, (self.blur_kernel, self.blur_kernel), 0)
         hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
 
-        best: tuple[ColorSpec, float, list, np.ndarray] | None = None
-        for spec in self.palette:
-            if not spec.hsv_ranges:
+        # label image: 0 = latar, selainnya = id warna (maks 255).
+        labels = np.zeros((h, w), dtype=np.uint8)
+        for spec in specs:
+            if not spec.hsv_ranges or not (0 < spec.id < 256):
                 continue
-            raw_mask = self._build_mask(hsv, spec)
-            contours, _ = cv2.findContours(raw_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            min_blob = max(40.0, frame_area * self.min_area_ratio * 0.25)
+            mask = self._build_mask(hsv, spec) > 0
+            labels[mask & (labels == 0)] = spec.id
+
+        min_blob = max(40.0, frame_area * self.min_area_ratio * 0.25)
+        results: list[Detection] = []
+        for spec in specs:
+            binary = (labels == spec.id).astype(np.uint8) * 255
+            if not binary.any():
+                continue
+            contours, _ = cv2.findContours(
+                binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             kept = [c for c in contours if cv2.contourArea(c) >= min_blob]
             if not kept:
                 continue
+
             total = float(sum(cv2.contourArea(c) for c in kept))
-            if best is None or total > best[1]:
-                best = (spec, total, kept, raw_mask)
+            area_ratio = total / frame_area
+            if area_ratio < self.min_area_ratio:
+                continue
 
-        if best is None:
-            return Detection(frame_size=(w, h))
+            clean = np.zeros((h, w), dtype=np.uint8)
+            cv2.drawContours(clean, kept, -1, 255, thickness=cv2.FILLED)
+            moments = cv2.moments(clean)
+            if moments["m00"] <= 0:
+                continue
+            cx = moments["m10"] / moments["m00"]
+            cy = moments["m01"] / moments["m00"]
+            x, y, bw, bh = cv2.boundingRect(np.vstack(kept))
+            confidence = min(99.0, 50.0 + 50.0 * min(1.0, area_ratio / self.confidence_ref))
 
-        spec, total, kept, raw_mask = best
-        area_ratio = total / frame_area
-        if area_ratio < self.min_area_ratio:
-            return Detection(frame_size=(w, h), area_ratio=area_ratio)
+            results.append(Detection(
+                color_id=spec.id,
+                name=spec.name,
+                confidence=round(confidence, 1),
+                centroid=(round(float(cx), 1), round(float(cy), 1)),
+                bbox=(int(x), int(y), int(bw), int(bh)),
+                area_ratio=area_ratio,
+                frame_size=(w, h),
+                mask=clean,
+            ))
 
-        clean = np.zeros((h, w), dtype=np.uint8)
-        cv2.drawContours(clean, kept, -1, 255, thickness=cv2.FILLED)
+        results.sort(key=lambda d: d.area_ratio, reverse=True)
+        return results
 
-        moments = cv2.moments(clean)
-        if moments["m00"] <= 0:
-            return Detection(frame_size=(w, h), area_ratio=area_ratio)
-        cx = moments["m10"] / moments["m00"]
-        cy = moments["m01"] / moments["m00"]
-
-        x, y, bw, bh = cv2.boundingRect(np.vstack(kept))
-        confidence = min(99.0, 50.0 + 50.0 * min(1.0, area_ratio / self.confidence_ref))
-
-        return Detection(
-            color_id=spec.id,
-            name=spec.name,
-            confidence=round(confidence, 1),
-            centroid=(round(float(cx), 1), round(float(cy), 1)),
-            bbox=(int(x), int(y), int(bw), int(bh)),
-            area_ratio=area_ratio,
-            frame_size=(w, h),
-            mask=clean,
-        )
+    def detect(self, frame: np.ndarray,
+               include_neutral: bool | None = None) -> Detection:
+        """Warna DOMINAN saja — API lama, tetap dipakai main.py / PID Arduino."""
+        h, w = (frame.shape[:2] if frame is not None and frame.size else (0, 0))
+        results = self.detect_all(frame, include_neutral=include_neutral)
+        return results[0] if results else Detection(frame_size=(w, h))
 
     def detect_stable(self, frame: np.ndarray, voter: ColorVoter,
                       min_confidence: float | None = None) -> tuple[Detection, int]:

@@ -1,6 +1,9 @@
 # AimBot Warna 🤖🎨🔊
+### Robot Pembidik Sasaran — modifikasi: **Tebak Warna + Audio Feedback**
 
-Proyek alat + kode program yang dibuat mengikuti poster workshop **"Implementasi Object Detection pada Robot Pembidik Sasaran"** , dengan **satu perubahan utama**: robot tidak lagi menebak *jenis objek*, melainkan **menebak WARNA**. **Begitu warna terdeteksi dan stabil, robot langsung memberi suara audio yang khas untuk warna itu** — nada + ucapan Bahasa Indonesia di PC, serta melodi buzzer + nyala LED RGB di board Arduino.
+Proyek alat + kode program yang dibuat mengikuti poster workshop **"Implementasi Object Detection pada Robot Pembidik Sasaran"** (Rizky Project / Rizky Dermawan), dengan **satu perubahan utama**: robot tidak lagi menebak *jenis objek*, melainkan **menebak WARNA**. **Begitu warna terdeteksi dan stabil, robot langsung memberi suara audio yang khas untuk warna itu** — nada + ucapan Bahasa Indonesia di PC, serta melodi buzzer + nyala LED RGB di board Arduino.
+
+**Versi terkini (Streamlit): Kamera Realtime + Full Warna.** Video dari kamera HP/laptop diproses terus-menerus (bukan sekadar memotret), **12 warna** dikenali, dan **semua warna yang muncul dalam satu frame dideteksi sekaligus** — masing-masing diberi kotak + label, lalu nada/ucapan dipicu saat kumpulan warna berubah.
 
 Semua kerangka teknis poster tetap dipertahankan: Python environment → OpenCV image processing → (opsional) YOLO → object tracking di PC; IDE Arduino → hardware → serial data communication → PID controller di robot.
 
@@ -10,15 +13,16 @@ Semua kerangka teknis poster tetap dipertahankan: Python environment → OpenCV 
 
 | Aspek | Poster asli | Proyek ini |
 |---|---|---|
-| Target | Objek (bounding box YOLO, label kelas) | **Warna dominan** (HSV + kontur) |
-| Output utama | Kotak deteksi + bidikan | Kotak deteksi + bidikan **+ suara** |
+| Target | Objek (bounding box YOLO, label kelas) | **Warna dominan + multi-warna** (HSV + kontur, 12 warna sekaligus) |
+| Output utama | Kotak deteksi + bidikan | Banyak kotak deteksi (satu per warna) + bidikan **+ suara** |
 | Umpan balik | Visual di monitor | **Audio per warna**, ucapan TTS, buzzer, LED RGB |
 | Label HUD | `Red 50%`, `Green 97%`, `Blue 95%` | `MERAH 77%`, `HIJAU 77%`, ... + `AUDIO: MERAH / 440 Hz` |
+| Kamera | webcam PC | webcam PC **atau Kamera Realtime di browser HP** (getUserMedia, 20 FPS) |
 | Chapter 1.3 | YOLO Object Detection | Tetap tersedia sebagai **opsi** `--detector yolo` (fallback otomatis) |
 | Chapter 2.4 | PID Controller | Tetap, plus PID versi Python untuk mode simulasi |
 | Hardware | 4WD + webcam + pan-tilt + Arduino | Sama, **tambah buzzer pasif + LED RGB** |
 
-> Prinsip desain: **satu tabel warna** (`config/colors.json`) dipakai bersama oleh Python, Arduino, dan demo web, supaya id warna ↔ nama ↔ nada ↔ warna LED tidak pernah beda sendiri.
+> Prinsip desain: **satu tabel warna** (`config/colors.json`) dipakai bersama oleh Python, Arduino, Streamlit, dan komponen kamera realtime, supaya id warna ↔ nama ↔ nada ↔ warna LED tidak pernah beda sendiri.
 
 ---
 
@@ -30,22 +34,27 @@ Semua kerangka teknis poster tetap dipertahankan: Python environment → OpenCV 
             ▼
   ┌──────────────────────── PC: Python + OpenCV ────────────────────────┐
   │ 1. Gaussian blur → BGR2HSV                                          │
-  │ 2. Threshold per warna (MERAH pakai 2 rentang: hue wrap-around)      │
-  │ 3. Morfologi open/close → kontur terbesar → centroid + bounding box  │
-  │ 4. ColorVoter: voting 7 frame (anti kedip / histeresis)              │
-  │ 5. Tracker: error ternormalisasi −100..100 (0 = tepat di tengah)     │
+  │ 2. Threshold 12 warna (MERAH pakai 2 rentang: hue wrap-around)      │
+  │ 3. Label priority: tiap piksel hanya diklaim 1 warna (tanpa dobel)  │
+  │ 4. Morfologi → kontur per warna → centroid + bounding box           │
+  │    detect_all() = SEMUA warna dalam 1 frame                         │
+  │ 5. ColorVoter: voting 7 frame (anti kedip / histeresis)              │
+  │ 6. Tracker: error ternormalisasi −100..100 (0 = tepat di tengah)     │
   └────────┬──────────────────────────────────────┬─────────────────────┘
-           │ warna STABIL berubah                  │ T,err_x,err_y,id,conf
+           │ kumpulan warna STABIL berubah         │ T,err_x,err_y,id,conf
            ▼                                       ▼  (USB Serial 115200)
   ┌────────────────────────┐            ┌────────────────────────────────┐
   │ AUDIO (fitur baru)     │            │ ARDUINO Uno/Nano               │
   │ • <warna>.wav (nada)   │            │ • PID pan/tilt + slew limit    │
-  │ • TTS "Warna           │◄─ EVT ─────│ • servo PAN D9 / TILT D10      │
-  │   terdeteksi, merah"   │   POS      │ • LED RGB D3/D5/D6             │
-  │ • cooldown 1,2 detik   │            │ • buzzer D11: melodi per warna │
-  │ • hanya saat BERUBAH   │            │ • LED LOCK D12 + failsafe      │
+  │   digabung berurutan   │            │ • servo PAN D9 / TILT D10      │
+  │ • TTS "Warna           │◄─ EVT ─────│ • LED RGB D3/D5/D6             │
+  │   terdeteksi, merah"   │   POS      │ • buzzer D11: melodi per warna │
+  │ • cooldown 1,2 detik   │            │ • LED LOCK D12 + failsafe      │
+  │ • hanya saat BERUBAH   │            │ • tabel 12 warna (COLOR_COUNT) │
   └────────────────────────┘            └────────────────────────────────┘
 ```
+
+**Cabang browser (Kamera Realtime / Streamlit, §13)**: `getUserMedia` → konversi RGB→HSV per piksel di `<canvas>` → connected components → HUD banyak kotak → Web Audio + Web Speech. Logika warna identik dengan Python, tapi frame **tidak dikirim ke server**, sehingga tetap lancar di HP dan tidak butuh TURN/WebRTC di Streamlit Cloud.
 
 ---
 
@@ -56,40 +65,42 @@ AimBot-Warna-Audio/
 ├── README.md                      ← dokumen ini
 ├── run.py                         ← launcher Python/OpenCV (python run.py ...)
 ├── run_streamlit.py               ← launcher Streamlit (tidak butuh PATH streamlit.exe)
-├── streamlit_app.py               ← aplikasi browser: bisa dibuka di HP & online
+├── streamlit_app.py               ← aplikasi browser: Kamera Realtime, 12 warna, HP & online
 ├── requirements.txt               ← dependensi lokal (OpenCV lengkap)
 ├── requirements-streamlit.txt     ← dependensi cloud (OpenCV headless, ringan)
 ├── requirements-optional.txt
 ├── packages.txt                   ← paket apt opsional untuk Streamlit Cloud
 ├── .streamlit/config.toml         ← tema terang + pengaturan server
-├── .github/workflows/ci.yml       ← GitHub Actions: compile + 36 unit test
+├── .github/workflows/ci.yml       ← GitHub Actions: compile + 46 unit test
 ├── config/
-│   ├── colors.json                ← TABEL WARNA (HSV, nada, LED, ucapan)
+│   ├── colors.json                ← TABEL 12 WARNA (HSV, grup, nada, LED, ucapan)
 │   └── settings.json              ← kamera, deteksi, PID, serial, audio, HUD
 ├── python/
 │   ├── main.py                    ← entry point / orkestrator loop
 │   ├── vision/
-│   │   ├── colors.py              ← ColorPalette (single source of truth)
-│   │   ├── color_detector.py      ← HSV + kontur + ColorVoter
+│   │   ├── colors.py              ← ColorPalette (single source of truth, as_web_config)
+│   │   ├── color_detector.py      ← HSV + kontur + detect_all() + ColorVoter
 │   │   ├── tracker.py             ← centroid → error → TargetCommand
 │   │   ├── pid.py                 ← PID anti-windup (mode simulasi)
-│   │   ├── hud.py                 ← tampilan ala monitor di poster
+│   │   ├── hud.py                 ← draw_hud() & draw_hud_multi() (banyak kotak)
 │   │   └── yolo_detector.py       ← Chapter 1.3 opsional (fallback aman)
 │   ├── audio/
 │   │   ├── speaker.py             ← pemicu audio saat warna berubah + TTS
-│   │   └── tone_factory.py        ← generator WAV (stdlib murni)
+│   │   └── tone_factory.py        ← generator WAV + concat_wav_bytes()
 │   ├── hardware/serial_link.py    ← protokol serial + MODE MOCK
 │   ├── utils/                     ← paths (deteksi root otomatis), logger
 │   └── tools/
 │       ├── calibrate_color.py     ← kalibrasi HSV pakai trackbar
 │       ├── generate_sounds.py     ← buat/refresh semua WAV
 │       └── serial_monitor.py      ← tes Arduino manual dari PC
-├── arduino/aim_bot_warna/aim_bot_warna.ino   ← firmware (Servo library saja)
-├── demo/index.html                ← SIMULATOR WEB, tanpa hardware sama sekali
-├── assets/sounds/*.wav            ← 9 file suara (sudah digenerate)
-├── tests/test_pipeline.py         ← unit test pipeline vision/audio/serial
+├── web/realtime.html              ← KOMPONEN KAMERA REALTIME (HTML/JS di iframe)
+├── arduino/aim_bot_warna/aim_bot_warna.ino   ← firmware 12 warna (Servo library saja)
+├── demo/index.html                ← SIMULATOR WEB lama, tanpa hardware sama sekali
+├── assets/sounds/*.wav            ← 15 file suara (12 warna + startup/lock/lost)
+├── tests/test_pipeline.py         ← unit test vision/audio/serial + multi-warna
 ├── tests/test_bootstrap.py        ← test layout folder, tanpa argumen, IDLE, fallback
-└── tests/test_streamlit_app.py    ← test file deploy Streamlit & GitHub
+├── tests/test_streamlit_app.py    ← test deploy Streamlit/GitHub + AppTest
+└── tests/realtime_js_harness.js   ← uji logika deteksi JS (Node) untuk 12 warna
 ```
 
 ---
@@ -132,7 +143,7 @@ pip install -r requirements.txt   # termasuk Streamlit + Pillow untuk versi brow
 # 2) Cek instalasi & port
 python run.py --list-ports                    # launcher dari ROOT (paling aman)
 python python/main.py --list-ports           # atau langsung
-python -m unittest discover -s tests -v      # harus: Ran 36 tests ... OK
+python -m unittest discover -s tests -v      # harus: Ran 46 tests ... OK
 
 # 3) Arduino
 #    Buka arduino/aim_bot_warna/aim_bot_warna.ino di Arduino IDE
@@ -153,7 +164,8 @@ A. Rilis asli                      B. Folder rata (semua di satu level)
    ├── assets/                       ├── settings.json
    └── python/                       ├── audio/  vision/  hardware/  utils/  tools/
        ├── main.py                   ├── assets/sounds/
-       └── audio/ vision/ ...        └── index.html  README.md
+       └── audio/ vision/ ...        ├── realtime.html  (dari web/)
+       └── web/realtime.html         └── index.html  README.md
 ```
 
 Cara paling aman menjalankan (pilih salah satu):
@@ -169,7 +181,9 @@ python main.py --synthetic --mock --headless      # layout rata juga didukung
 
 Kalau paket memang belum ada, program **tidak** lagi memunculkan traceback mentah; ia mencetak daftar folder yang diperiksa dan petunjuk menyalin seluruh isi proyek, lalu keluar dengan kode 2.
 
-Aset suara sudah ada di `assets/sounds/`. Untuk membuat ulang (atau menambah ucapan TTS yang di-render):
+> Untuk mode **Kamera Realtime**, `streamlit_app.py` mencari `web/realtime.html` **atau** `realtime.html` di root — jadi layout rata tetap jalan asal file komponen ikut disalin.
+
+Aset suara sudah ada di `assets/sounds/` (15 WAV). Untuk membuat ulang:
 
 ```bash
 python python/tools/generate_sounds.py --overwrite
@@ -189,7 +203,7 @@ python run.py
 Kamera memakai `camera.index` dari `settings.json` (default 0). Kalau tidak ada webcam, otomatis **fallback ke bola warna sintetis** — tidak error. Serial otomatis MODE MOCK bila Arduino tidak tersambung. Tekan **Q** di jendela HUD untuk keluar.
 
 ### Mode A — Paling cepat: simulator web (0 instalasi, 0 hardware)
-Buka `demo/index.html` di browser. Ada kamera → deteksi warna real-time; tidak ada kamera / izin ditolak → otomatis memakai **6 kartu warna yang bisa diklik** sebagai target virtual. Termasuk HUD pembidik, Web Audio, ucapan `id-ID`, log serial, dan simulasi PID.
+Buka `demo/index.html` di browser. Ada kamera → deteksi warna real-time; tidak ada kamera / izin ditolak → otomatis memakai **6 kartu warna yang bisa diklik** sebagai target virtual. Termasuk HUD pembidik, Web Audio, ucapan `id-ID`, log serial, dan simulasi PID. *(Simulator mandiri ini sengaja tetap 6 kartu; tabel **12 warna penuh** ada di mode Streamlit §6 Mode E.)*
 
 ### Mode B — Python tanpa Arduino & tanpa webcam (disarankan untuk pertama kali)
 ```bash
@@ -209,20 +223,28 @@ python python/main.py --port COM3
 ```
 Arduino otomatis terdeteksi bila `--port` tidak diisi.
 
-### Mode E — Streamlit (browser HP, bisa online)
+### Mode E — Streamlit: Kamera Realtime + 12 warna (browser HP, bisa online)
 ```bash
 python run_streamlit.py            # paling aman; streamlit.exe tidak perlu ada di PATH
 # atau:
 streamlit run streamlit_app.py
 ```
 Buka `http://localhost:8501` di PC. Untuk HP di WiFi yang sama, launcher sudah
-otomatis bind `0.0.0.0` → buka `http://<IP-WiFi-komputer>:8501`. Tiga sumber
-gambar tersedia: **Kamera HP**, **Upload gambar**, **Simulasi** (6 kartu warna).
-Detail deploy online ada di **§13**.
+otomatis bind `0.0.0.0` → buka `http://<IP-WiFi-komputer>:8501`.
+
+| Sumber gambar | Perilaku |
+|---|---|
+| **Kamera Realtime** *(bawaan)* | Video langsung, **bukan foto**. `getUserMedia` → HSV per piksel → **semua warna sekaligus** per frame → banyak kotak HUD → nada + ucapan saat kumpulan warna berubah. Kamera depan/belakang bisa dipilih di sidebar. |
+| **Upload / Foto** | Satu foto / gambar; `ColorDetector.detect_all()` memeriksa **12 warna sekaligus** lewat OpenCV Python. |
+| **Simulasi** | 12 kartu warna + tombol **Semua warna sekaligus** (grid 12 bola → 12 kotak deteksi + 12 nada berurutan). |
+
+Sidebar: mode suara (keduanya/nada/ucapan/mati), ambang luas warna, voting anti-kedip,
+**sertakan warna netral** (putih/hitam/abu — matikan bila latar ramai), kamera HP,
+HUD, dan reset sesi. Detail deploy online ada di **§13**.
 
 ### Perintah berguna lainnya
 ```bash
-python python/main.py --test-audio                      # mainkan 6 nada berurutan
+python python/main.py --test-audio                      # mainkan 12 nada berurutan
 python python/main.py --list-ports                     # daftar port serial
 python python/main.py --calibrate merah                # kalibrasi HSV trackbar
 python python/main.py --detector yolo --camera 0       # YOLO + warna (perlu ultralytics)
@@ -250,7 +272,7 @@ python run_streamlit.py --server.port 8600            # Streamlit di port lain
 
 | Perintah | Contoh | Arti |
 |---|---|---|
-| Target | `T,12.5,-3.0,1,97` | err_x, err_y (−100..100), id warna, confidence |
+| Target | `T,12.5,-3.0,1,97` | err_x, err_y (−100..100), id warna (1–12), confidence |
 | Ping | `PING` | balasan `PONG` |
 | Tengah | `CENTER` | reset PID, servo ke 90°, LED mati |
 | Tes buzzer | `BUZZ,3` | mainkan melodi BIRU |
@@ -263,19 +285,29 @@ python run_streamlit.py --server.port 8600            # Streamlit di port lain
 
 ---
 
-## 8. Peta warna → suara → LED
+## 8. Peta warna → suara → LED (12 warna)
 
-| ID | Warna | Nada | Pola | Ucapan | LED RGB | Rentang HSV (OpenCV) |
-|---:|---|---:|---|---|---|---|
-| 0 | TIDAK ADA | — | sweep turun | — | mati | — |
-| 1 | MERAH | 440 Hz | 1 beep | "merah" | 255,25,25 | 0–9 **dan** 170–179 |
-| 2 | HIJAU | 523 Hz | 2 beep | "hijau" | 25,255,60 | 36–85 |
-| 3 | BIRU | 587 Hz | 3 beep | "biru" | 25,90,255 | 95–130 |
-| 4 | KUNING | 659 Hz | 4 beep | "kuning" | 255,210,25 | 20–35 |
-| 5 | ORANYE | 698 Hz | 5 beep | "oranye" | 255,130,20 | 10–19 |
-| 6 | UNGU | 784 Hz | 6 beep + arpeggio | "ungu" | 170,45,255 | 131–165 |
+| ID | Warna | Grup | Nada | Pola | Ucapan | LED RGB | Rentang HSV (OpenCV) |
+|---:|---|---|---:|---|---|---|---|
+| 0 | TIDAK ADA | — | — | sweep turun | — | mati | — |
+| 1 | MERAH | kromatik | 440 Hz | 1 beep | "merah" | 255,25,25 | 0–9 **dan** 170–179 |
+| 2 | HIJAU | kromatik | 523 Hz | 2 beep | "hijau" | 25,255,60 | 36–84 |
+| 3 | BIRU | kromatik | 587 Hz | 3 beep | "biru" | 25,90,255 | 95–130 |
+| 4 | KUNING | kromatik | 659 Hz | 4 beep | "kuning" | 255,210,25 | 20–35 |
+| 5 | ORANYE | kromatik | 698 Hz | 5 beep | "oranye" | 255,130,20 | 10–19 |
+| 6 | UNGU | kromatik | 784 Hz | 6 beep | "ungu" | 170,45,255 | 131–149 |
+| 7 | CYAN | kromatik | 880 Hz | 1 beep + arpeggio | "sian" | 25,220,230 | 85–94 |
+| 8 | MAGENTA | kromatik | 988 Hz | 2 beep + arpeggio | "magenta" | 255,60,180 | 150–169 |
+| 9 | COKLAT | kromatik | 1047 Hz | 3 beep + arpeggio | "coklat" | 110,65,35 | 8–20 (V 40–135) |
+| 10 | PUTIH | netral | 1175 Hz | 4 beep + arpeggio | "putih" | 240,240,240 | S 0–45, V 200–255 |
+| 11 | HITAM | netral | 1319 Hz | 5 beep + arpeggio | "hitam" | 20,20,20 | V 0–45 |
+| 12 | ABU | netral | 1397 Hz | 6 beep + arpeggio | "abu abu" | 128,128,128 | S 0–45, V 60–190 |
 
-Frekuensi **dan** jumlah beep dibedakan supaya warna masih bisa dikenali tanpa melihat layar. Audio **hanya dipicu saat warna stabil berubah** (`ColorVoter` 7 frame + cooldown 1,2 s) — tidak berbunyi 30× per detik.
+**ID 1–6** = warna workshop asli; **ID 7–9** = cyan/magenta/coklat (ekspansi kromatik); **ID 10–12** = grup **netral**. Nada (440→1397 Hz) **dan** jumlah beep dibedakan supaya warna masih bisa dikenali tanpa melihat layar. Di `main.py` / Arduino hanya grup kromatik yang aktif secara bawaan (`include_neutral: false` di `settings.json`); mode **FULL WARNA** Streamlit menyalakan 12 warna, dan sidebar bisa mematikan grup netral bila latar ruangan terlalu ramai.
+
+**Deteksi multi-warna tanpa dobel hitung**: tiap piksel diklaim oleh warna **pertama** yang cocok sesuai urutan tabel (label priority), sehingga rentang HSV yang tumpang tindih (mis. oranye/kuning/coklat, ungu/magenta/merah) tidak menghasilkan dua kotak untuk objek yang sama.
+
+Audio **hanya dipicu saat kumpulan warna stabil berubah** (`ColorVoter` + cooldown 1,2 s) — tidak berbunyi 30× per detik. Bila beberapa warna muncul bareng, nada digabung **berurutan** jadi satu WAV (`concat_wav_bytes`) dan ucapan menyebut semua warna.
 
 Ubah tabel di `config/colors.json`, lalu samakan array `warna[]` di file `.ino` bila mengubah id/nada.
 
@@ -308,14 +340,15 @@ Nilai error sudah ternormalisasi −100..100 sehingga **tidak bergantung resolus
 | Chapter poster | Implementasi di proyek |
 |---|---|
 | 1.1 Python Environment Setup | `requirements.txt`, venv, `python/main.py` |
-| 1.2 OpenCV Image Processing | `vision/color_detector.py`, `tools/calibrate_color.py` |
+| 1.2 OpenCV Image Processing | `vision/color_detector.py` (`detect`, **`detect_all`**), `tools/calibrate_color.py` |
 | 1.3 YOLO Object Detection | `vision/yolo_detector.py` (opsional, fallback aman) |
-| 1.4 Object Tracking | `vision/tracker.py`, `vision/color_detector.py::ColorVoter`, `hud.py` |
-| 2.1 IDE Arduino Setup | `arduino/aim_bot_warna/aim_bot_warna.ino` (library Servo saja) |
+| 1.4 Object Tracking | `vision/tracker.py`, `vision/color_detector.py::ColorVoter`, `hud.py` (`draw_hud_multi`) |
+| 2.1 IDE Arduino Setup | `arduino/aim_bot_warna/aim_bot_warna.ino` (library Servo saja, 12 warna) |
 | 2.2 Hardware Setup | Tabel wiring di §4 & header `.ino` |
 | 2.3 Serial Data Communication | `hardware/serial_link.py`, `tools/serial_monitor.py`, §7 |
 | 2.4 PID Controller | `updatePID()` di `.ino`, `vision/pid.py`, §9 |
 | **Tambahan** | `audio/speaker.py`, `audio/tone_factory.py`, `assets/sounds/`, `demo/index.html` |
+| **Kamera Realtime / full warna** | `web/realtime.html` (getUserMedia + HSV + connected components + Web Audio/Speech), `tests/realtime_js_harness.js` |
 | **Antarmuka browser / HP** | `streamlit_app.py`, `run_streamlit.py`, `.streamlit/config.toml`, `requirements-streamlit.txt` (pipeline §1.2/1.4 dipakai ulang, bukan ditulis ulang) |
 
 ---
@@ -330,6 +363,8 @@ Nilai error sudah ternormalisasi −100..100 sehingga **tidak bergantung resolus
 | `The function is not implemented` / `cv2.imshow` error | build `opencv-python-headless` tidak punya jendela; HUD otomatis dimatikan. Pakai `demo/index.html` untuk tampilan, atau `pip install opencv-python` |
 | Warna sering salah di lampu kuning | kalibrasi ulang HSV; naikkan `Low S`/`Low V`; pakai latar netral |
 | MERAH tidak terdeteksi | pastikan `hsv2` (170–179) masih ada di `colors.json` |
+| Terlalu banyak warna netral (dinding/meja ikut terdeteksi) | matikan **Sertakan warna netral** di sidebar Streamlit, atau `include_neutral: false` di `settings.json` |
+| Dua kotak untuk satu objek | urutan tabel `colors.json` = prioritas; pindahkan warna yang lebih spesifik ke atas |
 | Suara tidak terdengar | cek `--no-audio`/`--audio-mode off`; jalankan `--test-audio`; di Windows pastikan `winsound` tersedia |
 | Ucapan TTS lambat | jalankan `generate_sounds.py --speech` agar WAV ucapan di-render lebih dulu |
 | `pyserial belum terpasang` | `pip install pyserial`; tanpa itu proyek otomatis masuk MODE MOCK |
@@ -338,8 +373,11 @@ Nilai error sudah ternormalisasi −100..100 sehingga **tidak bergantung resolus
 | `ultralytics` tidak ada | normal; `--detector yolo` otomatis fallback ke HSV penuh |
 | `streamlit: command not found` / `streamlit.exe` tidak dikenal | pakai `python run_streamlit.py` (memanggil CLI lewat modul, tidak bergantung PATH) |
 | `ImportError: libGL.so.1` saat deploy cloud | pilih `requirements-streamlit.txt` di Advanced settings, atau biarkan `packages.txt` memasang `libgl1` |
-| Kamera HP tidak mau menyala | butuh **HTTPS**; deploy ke Streamlit Cloud, atau sementara pakai mode **Upload gambar** / **Simulasi** lewat HTTP LAN |
-| Suara tidak bunyi di HP | iOS/Android memblokir autoplay sampai ada sentuhan; ketuk **Putar ulang nada** atau **Ucapkan warna** |
+| **Panel Kamera Realtime kosong / tombol kamera tidak menyala** | butuh **HTTPS** atau `localhost`; deploy ke Streamlit Cloud (§13.2). Cek juga izin kamera browser & tidak ada aplikasi lain yang memakai kamera |
+| **Kamera realtime tertutup / `getUserMedia` diblokir di iframe** | komponen di-embed lewat `st.iframe` dengan izin `camera`; bila browser lama memblokir, buka URL Streamlit langsung (bukan tab tersemat) atau pakai **Upload / Foto** |
+| `web/realtime.html tidak ditemukan` | salin folder `web/` (atau `realtime.html` ke root untuk layout rata) ke direktori proyek |
+| Kamera HP tidak mau menyala lewat `http://<IP>:8501` | HTTP LAN diblokir browser untuk `getUserMedia`; pakai `http://localhost:8501` di PC, atau deploy online (HTTPS) |
+| Suara tidak bunyi di HP | iOS/Android memblokir autoplay sampai ada sentuhan; ketuk **Putar ulang semua nada** atau **Ucapkan warna** |
 | HP tidak bisa buka `http://<IP>:8501` | samakan WiFi, izinkan port 8501 di firewall Windows, pastikan server bind `0.0.0.0` |
 
 ---
@@ -347,34 +385,48 @@ Nilai error sudah ternormalisasi −100..100 sehingga **tidak bergantung resolus
 ## 12. Pengujian
 
 ```bash
-python -m unittest discover -s tests -v     # 36 test, tidak butuh kamera/Arduino
+python -m unittest discover -s tests -v     # 46 test, tidak butuh kamera/Arduino
 python python/main.py                       # tanpa argumen juga harus jalan
 python python/main.py --synthetic --mock --headless --max-frames 95
 ```
-Cakupan: tabel warna & keunikan nada, wrap-around merah, deteksi 6 warna dari frame sintetis, frame kosong, error bidikan, voting anti-kedip, PID + anti-windup, format protokol serial, mode mock, fallback YOLO, validasi file WAV, **deteksi root untuk layout rata/asli**, **menjalankan dari folder & working directory lain**, **IDLE/`runpy`**, **pesan jelas bila paket hilang**, **default kamera tanpa argumen + fallback sintetis**, **kelengkapan file deploy Streamlit/GitHub**, serta **menjalankan aplikasi Streamlit dengan `AppTest`** (deteksi warna + pemicu audio saat warna diganti).
+Cakupan: tabel **12 warna** & keunikan nada, grup kromatik/netral, wrap-around merah, `detect_all()` untuk seluruh palette, **deteksi multi-warna simultan** (6 bola → 6 kotak, tanpa id dobel), frame kosong, error bidikan, voting anti-kedip, PID + anti-windup, format protokol serial, mode mock, fallback YOLO, validasi & penggabungan file WAV, **deteksi root untuk layout rata/asli**, **menjalankan dari folder & working directory lain**, **IDLE/`runpy`**, **pesan jelas bila paket hilang**, **default kamera tanpa argumen + fallback sintetis**, **kelengkapan file deploy Streamlit/GitHub**, **AppTest** (mode bawaan = Kamera Realtime, komponen iframe tampil, simulasi semua warna → 12 deteksi + audio), serta **harness Node** yang menguji klasifikasi HSV 12 warna di `web/realtime.html` (diskip otomatis bila Node tidak tersedia).
 
 ---
 
 ## 13. Streamlit, HP & online lewat GitHub
 
-Versi **Streamlit** (`streamlit_app.py`) memakai **modul yang sama persis** dengan `main.py`:
-`ColorDetector` (HSV + kontur) → `ColorVoter` → `Tracker`/PID → `draw_hud` → WAV dari
-`audio/tone_factory.py`. Yang berubah hanya *presentation layer*: bukan jendela OpenCV,
-melainkan halaman web. Jadi tabel warna, protokol `T,err_x,err_y,id,conf`, dan aturan
+Versi **Streamlit** (`streamlit_app.py`) memakai **tabel warna yang sama persis** dengan `main.py` dan firmware:
+`config/colors.json` → `ColorPalette.as_web_config()` untuk komponen browser, dan
+`ColorDetector.detect_all()` + `draw_hud_multi()` + `concat_wav_bytes()` untuk mode
+Upload/Simulasi. Jadi id warna, nada, protokol `T,err_x,err_y,id,conf`, dan aturan
 "audio hanya saat warna stabil berubah" tetap identik dengan versi desktop & Arduino.
 
 | | Desktop `main.py` | Browser `streamlit_app.py` |
 |---|---|---|
-| Tampilan | jendela OpenCV (`cv2.imshow`) | halaman web Streamlit |
-| Sumber | webcam / video / sintetis | `camera_input` HP / upload / kartu warna |
-| Audio | WAV + SAPI TTS | `st.audio` + Web Speech API `id-ID` |
+| Tampilan | jendela OpenCV (`cv2.imshow`) | halaman web Streamlit + panel `iframe` |
+| Sumber | webcam / video / sintetis | **Kamera Realtime (video)** / upload / 12 kartu simulasi |
+| Deteksi | `detect()` dominan, `detect_all()` tersedia | **semua warna sekaligus per frame** (JS di browser & OpenCV di server) |
+| Audio | WAV + SAPI TTS | Web Audio / `st.audio` + Web Speech API `id-ID` |
 | Arduino | serial USB 115200 | **MODE MOCK** (log `T,...` disimulasikan) |
 | Akses | PC yang menjalankan script | HP, tablet, atau siapa pun lewat URL HTTPS |
 
 > Arduino **tidak** bisa dicolokkan ke server cloud. Untuk robot fisik tetap pakai
 > Mode C/D di PC; versi online berfungsi penuh sebagai **dashboard deteksi + audio**.
 
-### 13.1 Lokal — dibuka di HP satu WiFi
+### 13.1 Kenapa Kamera Realtime bukan `camera_input`
+
+| Pendekatan | Hasil |
+|---|---|
+| `st.camera_input` | hanya **satu foto** per ketukan — bukan video. ❌ tidak memenuhi realtime |
+| `streamlit-webrtc` | tiap frame dikirim ke server Python, butuh STUN/TURN + `av`; sering gagal di Cloud & jaringan seluler |
+| **`web/realtime.html` (dipakai)** | `getUserMedia` → HSV + connected components **lokal di browser HP** → HUD banyak kotak → Web Audio + Web Speech. ~20 FPS, tanpa frame bolak-balik ke server, tanpa dependensi baru |
+
+Komponen di-embed dengan `st.iframe` (izin `camera`), dan menerima konfigurasi
+(12 warna, HSV, nada, voting, kamera depan/belakang, mode suara) yang disuntikkan
+dari Python. `st.iframe(html, height="content")` dipakai bila tersedia, dengan
+fallback `components.html` untuk Streamlit lama.
+
+### 13.2 Lokal — dibuka di HP satu WiFi
 
 ```bash
 pip install -r requirements.txt
@@ -389,10 +441,11 @@ streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8501
    Firewall, dan pastikan tidak ada `--server.address 127.0.0.1`.
 
 ⚠️ Lewat **HTTP** (LAN), browser HP umumnya memblokir `getUserMedia`, jadi
-**Kamera HP** tidak aktif. Gunakan **Upload gambar** atau **Simulasi**. Supaya kamera
-betul-betul hidup, butuh **HTTPS** → deploy online (§13.2).
+**Kamera Realtime** tidak aktif. Gunakan **Upload / Foto** atau **Simulasi**, atau
+buka `http://localhost:8501` di komputer itu sendiri. Supaya kamera betul-betul
+hidup di HP, butuh **HTTPS** → deploy online (§13.3).
 
-### 13.2 Online gratis — GitHub + Streamlit Community Cloud
+### 13.3 Online gratis — GitHub + Streamlit Community Cloud
 
 GitHub **menyimpan kodenya**; Streamlit Cloud **menjalankan Python-nya**. Keduanya
 gratis untuk repo publik.
@@ -401,7 +454,7 @@ gratis untuk repo publik.
 # 1) Dari folder proyek
 git init
 git add .
-git commit -m "AimBot Warna: deteksi warna + audio + Streamlit"
+git commit -m "AimBot Warna: Kamera Realtime + 12 warna + audio + Streamlit"
 git branch -M main
 git remote add origin https://github.com/<username>/aimbot-warna.git
 git push -u origin main
@@ -414,18 +467,21 @@ git push -u origin main
    `requirements-streamlit.txt` (wajib: `opencv-python-headless`, tidak butuh `libGL`).
    Biarkan `packages.txt` apa adanya (cadangan `libgl1` kalau memakai `requirements.txt`).
 5. Klik **Deploy**. Tunggu 2–5 menit → URL `https://<nama>.streamlit.app`.
-6. Buka URL itu di HP → kamera & audio aktif karena **HTTPS**. Browser menu →
-   **Add to Home Screen / Tambahkan ke Layar Utama** agar tampil seperti aplikasi.
+6. Buka URL itu di HP → ketuk **Aktifkan kamera realtime**, izinkan kamera. Audio &
+   kamera aktif karena **HTTPS**. Browser menu → **Add to Home Screen / Tambahkan
+   ke Layar Utama** agar tampil seperti aplikasi.
 
 **Checklist file yang ikut ter-push** (jangan di-`gitignore`):
 
 ```
-streamlit_app.py  run_streamlit.py
+streamlit_app.py  run_streamlit.py  run.py
 requirements.txt  requirements-streamlit.txt  packages.txt
 .streamlit/config.toml
 config/colors.json  config/settings.json
-assets/sounds/*.wav        ← 9 file WAV, kalau hilang aplikasi generate otomatis
-python/**/*.py             ← vision/ audio/ hardware/ utils/
+web/realtime.html                     ← komponen Kamera Realtime (wajib!)
+assets/sounds/*.wav                   ← 15 file WAV, kalau hilang aplikasi generate otomatis
+python/**/*.py                        ← vision/ audio/ hardware/ utils/
+.github/workflows/ci.yml
 ```
 
 **Catatan penting**
@@ -433,24 +489,26 @@ python/**/*.py             ← vision/ audio/ hardware/ utils/
 - **GitHub Pages tidak bisa menjalankan Python/Streamlit** — hanya file statis HTML/CSS/JS.
   Kalau ingin Pages, aktifkan untuk `demo/index.html` (simulator murni browser, sudah
   punya Web Audio + Web Speech + HUD). Tapi untuk `streamlit_app.py`, pakai Streamlit Cloud.
-- `.github/workflows/ci.yml` otomatis menjalankan `py_compile` + seluruh unit test pada
-  Python 3.10/3.11/3.12 setiap `push`. Kalau ada yang merah, perbaiki sebelum deploy.
+- `.github/workflows/ci.yml` otomatis menjalankan `py_compile` + seluruh **46 unit test**
+  pada Python 3.10/3.11/3.12 setiap `push`. Kalau ada yang merah, perbaiki sebelum deploy.
 - Update kode cukup `git push`; Streamlit Cloud mendeteksi perubahan dan redeploy sendiri.
 - Repo privat butuh akun Streamlit Cloud berbayar; repo publik gratis.
 - Bila deploy gagal dengan `ImportError: libGL.so.1`, pastikan Advanced settings
   menunjuk `requirements-streamlit.txt`, bukan `requirements.txt`.
 
-### 13.3 Perilaku audio di browser
+### 13.4 Perilaku audio & deteksi di browser
 
 | Situasi | Hasil |
 |---|---|
-| Warna stabil **berubah** | nada WAV `autoplay` + ucapan `Warna terdeteksi, <warna>` (`id-ID`) |
-| Warna sama berulang | **tidak** berbunyi ulang (histeresis `ColorVoter`) |
-| Warna hilang | `EVT,COLOR,0,TIDAK ADA`, audio berhenti |
-| HP memblokir autoplay | tombol **Putar ulang nada** / **Ucapkan warna** tersedia |
+| Beberapa warna muncul bareng | **semua** diberi kotak + chip; nada digabung berurutan jadi satu WAV; ucapan menyebut semua warna |
+| Kumpulan warna stabil **berubah** | nada + ucapan `Warna terdeteksi, <warna1>, <warna2>, ...` dipicu |
+| Kumpulan warna sama berulang | **tidak** berbunyi ulang (histeresis voting) |
+| Warna hilang semua | `EVT,COLOR,0,TIDAK ADA`, audio berhenti |
+| Grup netral dimatikan | hanya 9 warna kromatik yang dipantau (berguna untuk latar ramai) |
+| HP memblokir autoplay | tombol **Putar ulang semua nada** / **Uji semua warna** / **Ucapkan warna** tersedia |
 | Satu foto di browser | dianggap satu *burst* frame agar voting langsung memutuskan (tidak perlu memotret 5×) |
 
 ---
 
 ### Kredit
-Struktur & silabus mengikuti poster **"Implementasi Object Detection pada Robot Pembidik Sasaran"** — Rizky Project (Rizky Dermawan). Modifikasi deteksi warna + umpan balik audio, kode, firmware, simulator, dan dokumentasi dibuat untuk proyek ini. Python/OpenCV, Arduino, dan Web APIs adalah merek dari pemiliknya masing-masing.
+Struktur & silabus mengikuti poster **"Implementasi Object Detection pada Robot Pembidik Sasaran"** — Rizky Project (Rizky Dermawan). Modifikasi deteksi warna + umpan balik audio, ekspansi 12 warna, kamera realtime, kode, firmware, simulator, dan dokumentasi dibuat untuk proyek ini. Python/OpenCV, Arduino, Streamlit, dan Web APIs adalah merek dari pemiliknya masing-masing.

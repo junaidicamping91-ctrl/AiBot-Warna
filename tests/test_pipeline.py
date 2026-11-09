@@ -16,7 +16,7 @@ for _p in (str(ROOT), str(ROOT / "python")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from audio.tone_factory import generate_all  # noqa: E402
+from audio.tone_factory import concat_wav_bytes, generate_all  # noqa: E402
 from hardware.serial_link import SerialLink  # noqa: E402
 from utils.paths import COLORS_FILE, SETTINGS_FILE, load_json  # noqa: E402
 from vision.color_detector import ColorDetector, ColorVoter  # noqa: E402
@@ -36,12 +36,31 @@ class PaletteTests(unittest.TestCase):
     def setUp(self):
         self.palette = ColorPalette.from_json(COLORS_FILE)
 
-    def test_six_colors_and_ids(self):
-        self.assertEqual(len(self.palette), 6)
-        self.assertEqual([s.id for s in self.palette], [1, 2, 3, 4, 5, 6])
+    def test_full_palette_and_ids(self):
+        """Mode FULL WARNA: 12 warna, ID 1-6 tetap kompatibel Arduino lama."""
+        self.assertEqual(len(self.palette), 12)
+        self.assertEqual([s.id for s in self.palette], list(range(1, 13)))
         self.assertEqual(self.palette.get(2).name, "HIJAU")
+        self.assertEqual(self.palette.get(7).name, "CYAN")
+        self.assertEqual(self.palette.get(12).name, "ABU")
         self.assertEqual(self.palette.get(99), UNKNOWN)
         self.assertEqual(self.palette.by_key("ungu").tone_hz, 784)
+
+    def test_chromatic_neutral_groups(self):
+        self.assertEqual(len(self.palette.chromatic), 9)
+        self.assertEqual(len(self.palette.neutral), 3)
+        self.assertEqual({s.group for s in self.palette.neutral}, {"netral"})
+        self.assertEqual([s.id for s in self.palette.for_detection(False)],
+                         list(range(1, 10)))
+        self.assertEqual([s.id for s in self.palette.for_detection(True)],
+                         list(range(1, 13)))
+
+    def test_web_config_matches_palette(self):
+        cfg = self.palette.as_web_config()
+        self.assertEqual(len(cfg), 12)
+        self.assertEqual(cfg[0]["name"], "MERAH")
+        self.assertEqual(len(cfg[0]["hsv"]), 2, "merah wrap-around tetap 2 rentang")
+        self.assertEqual(cfg[6]["tone_hz"], 880)
 
     def test_red_has_two_hsv_ranges(self):
         self.assertEqual(len(self.palette.get(1).hsv_ranges), 2,
@@ -50,7 +69,7 @@ class PaletteTests(unittest.TestCase):
     def test_unique_frequencies(self):
         freqs = [s.tone_hz for s in self.palette]
         self.assertEqual(len(freqs), len(set(freqs)), "tiap warna harus nada berbeda")
-        self.assertEqual([s.beeps for s in self.palette], [1, 2, 3, 4, 5, 6])
+        self.assertEqual([s.beeps for s in self.palette][:6], [1, 2, 3, 4, 5, 6])
 
 
 class PIDTests(unittest.TestCase):
@@ -126,13 +145,17 @@ class DetectorTests(unittest.TestCase):
         cls.palette = ColorPalette.from_json(COLORS_FILE)
         cls.detector = ColorDetector(cls.palette, load_json(SETTINGS_FILE, {}))
 
-    def _frame_with(self, bgr, radius=48):
-        frame = np.full((240, 320, 3), (40, 40, 40), dtype=np.uint8)
-        cv2.circle(frame, (160, 120), radius, tuple(int(v) for v in bgr), -1)
+    # (52,58,68) BGR -> S~60: bukan netral (S<=45) dan bukan kromatik (S>=80).
+    BG = (52, 58, 68)
+
+    def _frame_with(self, bgr, radius=48, pos=(160, 120)):
+        frame = np.full((240, 320, 3), self.BG, dtype=np.uint8)
+        cv2.circle(frame, pos, radius, tuple(int(v) for v in bgr), -1)
         return frame
 
-    def test_all_six_colors(self):
-        for spec in self.palette:
+    def test_all_chromatic_colors(self):
+        """detect() tetap mengembalikan SATU warna dominan (kompatibel main.py)."""
+        for spec in self.palette.chromatic:
             with self.subTest(warna=spec.name):
                 det = self.detector.detect(self._frame_with(spec.bgr))
                 self.assertEqual(det.color_id, spec.id)
@@ -140,6 +163,39 @@ class DetectorTests(unittest.TestCase):
                 self.assertGreaterEqual(det.confidence, 45)
                 self.assertAlmostEqual(det.centroid[0], 160, delta=3)
                 self.assertAlmostEqual(det.centroid[1], 120, delta=3)
+
+    def test_full_palette_detect_all(self):
+        """Mode FULL WARNA mengenali 12 warna termasuk putih/hitam/abu."""
+        detector = ColorDetector(self.palette, load_json(SETTINGS_FILE, {}),
+                                 include_neutral=True)
+        for spec in self.palette:
+            with self.subTest(warna=spec.name):
+                found = detector.detect_all(self._frame_with(spec.bgr))
+                self.assertIn(spec.id, [d.color_id for d in found])
+
+    def test_multi_color_simultaneous(self):
+        """Beberapa warna berbeda dalam SATU frame harus semuanya muncul."""
+        detector = ColorDetector(self.palette, load_json(SETTINGS_FILE, {}),
+                                 include_neutral=True)
+        frame = np.full((240, 320, 3), self.BG, dtype=np.uint8)
+        wanted = [1, 2, 3, 4, 7, 8, 10, 11]
+        positions = [(60, 60), (160, 60), (260, 60), (60, 180),
+                     (160, 180), (260, 180), (110, 120), (220, 120)]
+        for cid, pos in zip(wanted, positions):
+            cv2.circle(frame, pos, 30,
+                       tuple(int(v) for v in self.palette.get(cid).bgr), -1)
+        found = detector.detect_all(frame)
+        ids = [d.color_id for d in found]
+        for cid in wanted:
+            self.assertIn(cid, ids, f"warna id {cid} hilang dari multi-deteksi")
+        self.assertEqual(len(ids), len(set(ids)), "piksel tidak boleh dihitung 2x")
+
+    def test_neutral_excluded_by_default(self):
+        """Bidikan Arduino tidak boleh 'mengunci' dinding abu-abu."""
+        frame = self._frame_with(self.palette.get(12).bgr)
+        self.assertEqual(self.detector.detect(frame).color_id, 0)
+        found = self.detector.detect_all(frame, include_neutral=True)
+        self.assertIn(12, [d.color_id for d in found])
 
     def test_blank_frame_no_color(self):
         frame = np.full((240, 320, 3), (128, 128, 128), dtype=np.uint8)
@@ -212,6 +268,27 @@ class AudioAssetTests(unittest.TestCase):
             with wave.open(str(Path(tmp) / "ungu.wav"), "rb") as w:
                 self.assertGreater(w.getnframes(),
                                    wave.open(str(Path(tmp) / "merah.wav"), "rb").getnframes())
+            self.assertTrue((Path(tmp) / "cyan.wav").is_file())
+            self.assertTrue((Path(tmp) / "abu.wav").is_file())
+
+    def test_concat_wav_bytes_for_multi_color_audio(self):
+        """Beberapa nada warna disatukan jadi satu WAV untuk st.audio."""
+        import io
+        palette = ColorPalette.from_json(COLORS_FILE)
+        with tempfile.TemporaryDirectory() as tmp:
+            generate_all(Path(tmp), palette, overwrite=True)
+            paths = [Path(tmp) / f"{palette.get(cid).key}.wav" for cid in (1, 2, 3)]
+            data = concat_wav_bytes(paths)
+            self.assertTrue(data.startswith(b"RIFF"))
+            with wave.open(io.BytesIO(data), "rb") as w:
+                self.assertEqual(w.getnchannels(), 1)
+                self.assertEqual(w.getframerate(), 22050)
+                total = 0
+                for p in paths:
+                    with wave.open(str(p), "rb") as src:
+                        total += src.getnframes()
+                self.assertGreater(w.getnframes(), total)
+        self.assertEqual(concat_wav_bytes([]), b"")
 
 
 if __name__ == "__main__":

@@ -7,8 +7,8 @@ meski tanpa layar (berguna untuk robot / tunanetra).
 """
 from __future__ import annotations
 
+import io
 import math
-import struct
 import wave
 from array import array
 from pathlib import Path
@@ -103,6 +103,35 @@ def generate_all(sound_dir: Path, palette, volume: float = 0.6,
         if overwrite or not path.exists():
             made.append(factory(path))
     return made
+
+
+def concat_wav_bytes(paths, gap_s: float = 0.06) -> bytes:
+    """Gabungkan beberapa WAV nada menjadi SATU audio untuk multi-warna.
+
+    Dipakai mode FULL WARNA: bila 4 warna terdeteksi bersamaan, keempat nada
+    diputar berurutan dalam satu ``st.audio`` (browser biasanya hanya
+    mengizinkan satu elemen audio autoplay per interaksi).
+
+    Semua WAV hasil ``make_beeps`` bermono/16-bit/22050 Hz, jadi frame PCM-nya
+    bisa langsung disambung tanpa resample.
+    """
+    frames = bytearray()
+    gap = array("h", [0] * int(SAMPLE_RATE * gap_s)).tobytes()
+    for path in paths:
+        if not Path(path).is_file():
+            continue
+        with wave.open(str(path), "rb") as wav:
+            frames += wav.readframes(wav.getnframes())
+            frames += gap
+    if not frames:
+        return b""
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(SAMPLE_RATE)
+        out.writeframes(bytes(frames))
+    return buf.getvalue()
 
 
 def list_sounds(sound_dir: Path) -> list[Path]:

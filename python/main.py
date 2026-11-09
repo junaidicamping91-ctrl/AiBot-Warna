@@ -225,7 +225,7 @@ def parse_args(argv=None):
     p.add_argument("--no-audio", action="store_true", help="matikan audio PC")
     p.add_argument("--audio-mode", choices=["tones", "speech", "both", "off"],
                    help="nada / ucapan / keduanya / mati")
-    p.add_argument("--test-audio", action="store_true", help="mainkan ke-6 warna lalu keluar")
+    p.add_argument("--test-audio", action="store_true", help="mainkan ke-12 warna lalu keluar")
     p.add_argument("--headless", action="store_true", help="tanpa jendela OpenCV (server/CI)")
     p.add_argument("--detector", choices=["color", "yolo"], default="color",
                    help="color = HSV (default); yolo = YOLO + warna di dalam box (opsional)")

@@ -74,30 +74,39 @@
 // ---- Histeresis warna ----
 #define CONF_MIN    45      // conf minimum agar warna dianggap valid
 #define KONFIRMASI  3       // jumlah perintah T identik sebelum berubah
-#define COLOR_COUNT 7
+#define COLOR_COUNT 13   // id 0 = tidak ada, 1..12 = tabel warna lengkap
 
 // ---- Serial & melodi ----
 #define BUF_MAX     64
 #define MAX_STEPS   12
 
 // ============================================================
-// Tabel warna: id, nama, nada dasar (Hz), komponen LED R,G,B
+// Tabel warna: id, nama, nada dasar (Hz), LED R,G,B, jumlah beep.
+// HARUS sama dengan config/colors.json (single source of truth).
+// ID 10-12 (putih/hitam/abu) = grup netral, aktif di mode FULL WARNA web.
 // ============================================================
 struct Warna {
   byte id;
   const char* nama;
   unsigned int nada;
   byte r, g, b;
+  byte beeps;
 };
 
 const Warna warna[COLOR_COUNT] = {
-  {0, "Tidak ada",   0,   0,   0,   0},
-  {1, "Merah",     440, 255,  25,  25},
-  {2, "Hijau",     523,  25, 255,  60},
-  {3, "Biru",      587,  25,  90, 255},
-  {4, "Kuning",    659, 255, 210,  25},
-  {5, "Oranye",    698, 255, 130,  20},
-  {6, "Ungu",      784, 170,  45, 255}
+  {0,  "Tidak ada",    0,   0,   0,   0, 0},
+  {1,  "Merah",      440, 255,  25,  25, 1},
+  {2,  "Hijau",      523,  25, 255,  60, 2},
+  {3,  "Biru",       587,  25,  90, 255, 3},
+  {4,  "Kuning",     659, 255, 210,  25, 4},
+  {5,  "Oranye",     698, 255, 130,  20, 5},
+  {6,  "Ungu",       784, 170,  45, 255, 6},
+  {7,  "Cyan",       880,  25, 220, 230, 1},
+  {8,  "Magenta",    988, 255,  60, 180, 2},
+  {9,  "Coklat",    1047, 110,  65,  35, 3},
+  {10, "Putih",     1175, 240, 240, 240, 4},
+  {11, "Hitam",     1319,  20,  20,  20, 5},
+  {12, "Abu",       1397, 128, 128, 128, 6}
 };
 
 // ============================================================
@@ -192,7 +201,11 @@ void startMelody(int id) {
       stepFreq[stepLen] = 0;      stepDur[stepLen++] = 45;  // jeda
     }
   } else {
-    for (byte i = 0; i < id; i++) {
+    // Pakai jumlah beep dari tabel (bukan dari id) supaya ID 7..12 tidak
+    // menulis melebihi MAX_STEPS. 2 langkah per beep -> maksimal 6 beep.
+    byte n = warna[id].beeps;
+    if (n > MAX_STEPS / 2) n = MAX_STEPS / 2;
+    for (byte i = 0; i < n; i++) {
       stepFreq[stepLen] = f0;      stepDur[stepLen++] = 110;
       stepFreq[stepLen] = 0;      stepDur[stepLen++] = 70;  // jeda antar beep
     }

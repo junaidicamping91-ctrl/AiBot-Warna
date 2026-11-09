@@ -1,7 +1,11 @@
 {
   "meta": {
-    "note": "Rentang HSV memakai skala OpenCV: H 0-179, S 0-255, V 0-255. Dua rentang dipakai untuk MERAH karena hue wrap-around di 0/179.",
-    "cara_kalibrasi": "python python/tools/calibrate_color.py --camera 0 --color-key merah"
+    "note": "Rentang HSV memakai skala OpenCV: H 0-179, S 0-255, V 0-255. Dua rentang dipakai untuk MERAH karena hue wrap-around di 0/179. Urutan array = prioritas: piksel hanya diklaim warna PERTAMA yang cocok, sehingga rentang yang tumpang tindih tidak dihitung dua kali saat deteksi multi-warna.",
+    "cara_kalibrasi": "python python/tools/calibrate_color.py --camera 0 --color-key merah",
+    "grup": {
+      "kromatik": "warna berwarna (ID 1-9), selalu aktif di main.py / Arduino",
+      "netral": "putih/hitam/abu (ID 10-12), aktif penuh di mode FULL WARNA Streamlit; bisa dimatikan bila latar ruangan terlalu ramai"
+    }
   },
   "colors": [
     {
@@ -9,6 +13,7 @@
       "key": "merah",
       "name": "MERAH",
       "speech": "merah",
+      "group": "kromatik",
       "hex": "#E53935",
       "bgr": [45, 60, 230],
       "rgb": [255, 25, 25],
@@ -22,12 +27,13 @@
       "key": "hijau",
       "name": "HIJAU",
       "speech": "hijau",
+      "group": "kromatik",
       "hex": "#2EAD4B",
       "bgr": [75, 173, 46],
       "rgb": [25, 255, 60],
       "tone_hz": 523,
       "beeps": 2,
-      "hsv": [[36, 100, 70], [85, 255, 255]],
+      "hsv": [[36, 100, 70], [84, 255, 255]],
       "hsv2": null
     },
     {
@@ -35,6 +41,7 @@
       "key": "biru",
       "name": "BIRU",
       "speech": "biru",
+      "group": "kromatik",
       "hex": "#2F6BEA",
       "bgr": [234, 107, 47],
       "rgb": [25, 90, 255],
@@ -48,6 +55,7 @@
       "key": "kuning",
       "name": "KUNING",
       "speech": "kuning",
+      "group": "kromatik",
       "hex": "#F2C21C",
       "bgr": [28, 194, 242],
       "rgb": [255, 210, 25],
@@ -61,6 +69,7 @@
       "key": "oranye",
       "name": "ORANYE",
       "speech": "oranye",
+      "group": "kromatik",
       "hex": "#F58220",
       "bgr": [32, 130, 245],
       "rgb": [255, 130, 20],
@@ -74,12 +83,97 @@
       "key": "ungu",
       "name": "UNGU",
       "speech": "ungu",
+      "group": "kromatik",
       "hex": "#A334D6",
       "bgr": [214, 52, 163],
       "rgb": [170, 45, 255],
       "tone_hz": 784,
       "beeps": 6,
-      "hsv": [[131, 80, 60], [165, 255, 255]],
+      "hsv": [[131, 80, 60], [149, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 7,
+      "key": "cyan",
+      "name": "CYAN",
+      "speech": "sian",
+      "group": "kromatik",
+      "hex": "#19DCE6",
+      "bgr": [230, 220, 25],
+      "rgb": [25, 220, 230],
+      "tone_hz": 880,
+      "beeps": 1,
+      "hsv": [[85, 110, 90], [94, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 8,
+      "key": "magenta",
+      "name": "MAGENTA",
+      "speech": "magenta",
+      "group": "kromatik",
+      "hex": "#FF3CB4",
+      "bgr": [180, 60, 255],
+      "rgb": [255, 60, 180],
+      "tone_hz": 988,
+      "beeps": 2,
+      "hsv": [[150, 110, 100], [169, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 9,
+      "key": "coklat",
+      "name": "COKLAT",
+      "speech": "coklat",
+      "group": "kromatik",
+      "hex": "#6E4123",
+      "bgr": [35, 65, 110],
+      "rgb": [110, 65, 35],
+      "tone_hz": 1047,
+      "beeps": 3,
+      "hsv": [[8, 110, 40], [20, 255, 135]],
+      "hsv2": null
+    },
+    {
+      "id": 10,
+      "key": "putih",
+      "name": "PUTIH",
+      "speech": "putih",
+      "group": "netral",
+      "hex": "#F5F5F5",
+      "bgr": [245, 245, 245],
+      "rgb": [245, 245, 245],
+      "tone_hz": 1175,
+      "beeps": 4,
+      "hsv": [[0, 0, 200], [179, 45, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 11,
+      "key": "hitam",
+      "name": "HITAM",
+      "speech": "hitam",
+      "group": "netral",
+      "hex": "#141414",
+      "bgr": [20, 20, 20],
+      "rgb": [20, 20, 20],
+      "tone_hz": 1319,
+      "beeps": 5,
+      "hsv": [[0, 0, 0], [179, 255, 45]],
+      "hsv2": null
+    },
+    {
+      "id": 12,
+      "key": "abu",
+      "name": "ABU",
+      "speech": "abu abu",
+      "group": "netral",
+      "hex": "#808080",
+      "bgr": [128, 128, 128],
+      "rgb": [128, 128, 128],
+      "tone_hz": 1397,
+      "beeps": 6,
+      "hsv": [[0, 0, 60], [179, 45, 190]],
       "hsv2": null
     }
   ]

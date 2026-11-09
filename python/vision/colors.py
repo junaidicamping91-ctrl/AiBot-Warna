@@ -22,6 +22,7 @@ class ColorSpec:
     rgb: tuple[int, int, int]
     tone_hz: int
     beeps: int
+    group: str = "kromatik"                                        # kromatik | netral
     hsv_ranges: tuple[tuple[list[int], list[int]], ...] = field(default_factory=tuple)
 
     @property
@@ -39,6 +40,7 @@ UNKNOWN = ColorSpec(
     rgb=(148, 163, 184),
     tone_hz=0,
     beeps=0,
+    group="none",
 )
 
 
@@ -71,6 +73,7 @@ class ColorPalette:
                     rgb=tuple(item.get("rgb", [0, 0, 0])),
                     tone_hz=int(item.get("tone_hz", 440)),
                     beeps=int(item.get("beeps", 1)),
+                    group=item.get("group", "kromatik"),
                     hsv_ranges=tuple(ranges),
                 )
             )
@@ -85,6 +88,41 @@ class ColorPalette:
     @property
     def specs(self) -> list[ColorSpec]:
         return list(self._specs)
+
+    @property
+    def chromatic(self) -> list[ColorSpec]:
+        """Warna berwarna saja (ID 1-9) — default untuk bidikan Arduino."""
+        return [s for s in self._specs if s.group != "netral"]
+
+    @property
+    def neutral(self) -> list[ColorSpec]:
+        """Putih / hitam / abu — hanya dipakai saat mode FULL WARNA aktif."""
+        return [s for s in self._specs if s.group == "netral"]
+
+    def for_detection(self, include_neutral: bool = False) -> list[ColorSpec]:
+        return self.specs if include_neutral else self.chromatic
+
+    def as_web_config(self) -> list[dict]:
+        """Tabel warna untuk komponen realtime berbasis JavaScript.
+
+        Modul web tidak bisa mengimpor Python, jadi tabel yang SAMA dikirim
+        sebagai JSON. `hsv_ranges` tetap memakai skala OpenCV (H 0-179).
+        """
+        return [
+            {
+                "id": s.id,
+                "key": s.key,
+                "name": s.name,
+                "speech": s.speech,
+                "group": s.group,
+                "hex": s.hex,
+                "rgb": list(s.rgb),
+                "tone_hz": s.tone_hz,
+                "beeps": s.beeps,
+                "hsv": [list(r) for r in s.hsv_ranges],
+            }
+            for s in self._specs
+        ]
 
     def __iter__(self):
         return iter(self._specs)

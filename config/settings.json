@@ -11,6 +11,7 @@
     "morph_iterations": 2,
     "vote_window": 7,
     "min_votes": 4,
+    "include_neutral": false,
     "confidence_threshold": 45.0,
     "confidence_ref_ratio": 0.15
   },

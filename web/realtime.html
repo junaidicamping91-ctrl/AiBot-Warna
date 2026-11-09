@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AimBot Warna - Kamera Realtime</title>
+<style>
+  :root{color-scheme:light}
+  *{box-sizing:border-box}
+  body{margin:0;padding:10px;background:#f7f9fc;color:#16233a;
+       font-family:"Segoe UI",Inter,system-ui,-apple-system,sans-serif}
+  .wrap{max-width:640px;margin:0 auto}
+  .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+  button{border:1px solid #d5deec;background:#fff;color:#1d3557;border-radius:9px;
+         padding:8px 11px;font-size:12px;font-weight:600;cursor:pointer;min-height:36px}
+  button:hover{background:#eef4ff}
+  button.primary{background:#2563eb;color:#fff;border-color:#2563eb}
+  button.primary:hover{background:#1d4ed8}
+  #state{font-size:11px;color:#64748b;margin-left:auto;max-width:100%;text-align:right}
+  #state.ok{color:#15803d}#state.err{color:#b91c1c}
+  .stage{position:relative;background:#0f172a;border-radius:12px;overflow:hidden;
+         border:1px solid #dbe3ef;line-height:0}
+  #cam{display:none}
+  #view{display:block;width:100%;height:auto;aspect-ratio:4/3}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0 8px}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;
+        padding:4px 7px;border-radius:999px;border:1px solid #e2e8f0;
+        background:#fff;color:#64748b;letter-spacing:.2px}
+  .chip i{width:9px;height:9px;border-radius:50%;border:1px solid rgba(0,0,0,.12)}
+  .chip.off{opacity:.32;text-decoration:line-through}
+  .chip.on{color:#0f172a;border-color:#94a3b8;box-shadow:0 0 0 2px #dbeafe;opacity:1}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+  .stat{background:#fff;border:1px solid #e3e9f2;border-radius:10px;padding:7px 9px;text-align:center}
+  .stat b{display:block;font-size:17px;color:#185fa5;line-height:1.2}
+  .stat span{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.6px}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:11px;color:#475569;margin-bottom:8px}
+  .row label{display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+  pre{margin:0;background:#0f172a;color:#a5d6a7;border-radius:10px;padding:8px 10px;
+      font-size:10px;line-height:1.5;min-height:62px;max-height:96px;overflow:auto;
+      white-space:pre-wrap;word-break:break-all}
+  .hint{font-size:10px;color:#94a3b8;margin-top:6px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">
+    <button id="start" class="primary">Aktifkan kamera realtime</button>
+    <button id="stop">Matikan</button>
+    <button id="flip">Balik kamera</button>
+    <span id="state">Siap - ketuk tombol untuk mulai</span>
+  </div>
+
+  <div class="stage">
+    <video id="cam" playsinline muted autoplay></video>
+    <canvas id="view" width="320" height="240"></canvas>
+  </div>
+
+  <div id="chips" class="chips"></div>
+
+  <div class="stats">
+    <div class="stat"><b id="fps">0</b><span>FPS</span></div>
+    <div class="stat"><b id="ncolor">0</b><span>warna aktif</span></div>
+    <div class="stat"><b id="aim">-</b><span>bidikan utama</span></div>
+  </div>
+
+  <div class="row">
+    <label><input type="checkbox" id="snd" checked> Suara otomatis per warna</label>
+    <button id="test">Uji semua nada</button>
+    <span id="secure"></span>
+  </div>
+
+  <pre id="log">LOG,AimBot Warna realtime siap</pre>
+  <div class="hint">Deteksi HSV + connected components berjalan langsung di browser (tanpa
+    mengirim video ke server), jadi tetap lancar di HP. Tabel warna, nada, dan voting
+    diambil dari <code>config/colors.json</code> yang sama dengan Python/OpenCV &amp; Arduino.
+    Kamera butuh <b>HTTPS</b> (otomatis di Streamlit Cloud) atau <b>localhost</b>.</div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ==================================================================
+     Konfigurasi disuntikkan Python dari config/colors.json (single source).
+     ================================================================== */
+  const CFG = __CONFIG__;
+  const COLORS = (CFG.colors || []).slice();
+  const W = 320, H = 240, N = W * H;
+  const $ = id => document.getElementById(id);
+  const video = $('cam'), view = $('view');
+  const ctx = view.getContext('2d', { willReadFrequently: true });
+  view.width = W; view.height = H;
+
+  const active = COLORS.filter(c => CFG.include_neutral || c.group !== 'netral');
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const esc = s => String(s).replace(/[&<>"]/g,
+    ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+  let stream = null, raf = null, running = false, facing = CFG.facing || 'environment';
+  let lastProc = 0, lastFpsT = 0, fpsFrames = 0, fps = 0;
+  let streak = {}, stablePrev = [], lastAudioT = -9999;
+  let audioCtx = null, soundOn = true;
+  const logLines = [];
+
+  /* ------------------------------ UI helpers ---------------------- */
+  function setState(text, kind) {
+    const el = $('state');
+    el.textContent = text;
+    el.className = kind || '';
+  }
+  function pushLog(line) {
+    const t = new Date().toLocaleTimeString('id-ID', { hour12: false });
+    logLines.push('[' + t + '] ' + line);
+    while (logLines.length > 8) logLines.shift();
+    $('log').textContent = logLines.join('\n');
+  }
+  function buildChips() {
+    const box = $('chips');
+    box.innerHTML = '';
+    for (const c of COLORS) {
+      const el = document.createElement('span');
+      el.className = 'chip' + (active.indexOf(c) >= 0 ? '' : ' off');
+      el.dataset.id = c.id;
+      el.innerHTML = '<i style="background:' + c.hex + '"></i>' + esc(c.name);
+      box.appendChild(el);
+    }
+  }
+  function updateChips(ids) {
+    const set = new Set(ids);
+    for (const el of $('chips').children) {
+      el.classList.toggle('on', set.has(Number(el.dataset.id)));
+    }
+  }
+
+  /* ------------------------------ HSV OpenCV ----------------------
+     H 0-179, S 0-255, V 0-255 (persis seperti cv2.cvtColor BGR2HSV).
+     Urutan warna = prioritas: piksel hanya diklaim warna pertama yang cocok,
+     sehingga MERAH/MAGENTA, ORANYE/COKLAT, PUTIH/ABU tidak dihitung 2x. */
+  function rgb2hsv(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    let h = 0;
+    if (d > 0) {
+      if (mx === r) h = 60 * (((g - b) / d) % 6);
+      else if (mx === g) h = 60 * ((b - r) / d + 2);
+      else h = 60 * ((r - g) / d + 4);
+    }
+    if (h < 0) h += 360;
+    return [h / 2, mx === 0 ? 0 : (d / mx) * 255, mx * 255];
+  }
+  function colorIndex(h, s, v) {
+    for (let i = 0; i < active.length; i++) {
+      const ranges = active[i].hsv || [];
+      for (let j = 0; j < ranges.length; j++) {
+        const lo = ranges[j][0], hi = ranges[j][1];
+        if (h >= lo[0] && h <= hi[0] && s >= lo[1] && s <= hi[1] &&
+            v >= lo[2] && v <= hi[2]) return i + 1;
+      }
+    }
+    return 0;
+  }
+
+  /* -------------------- Deteksi SEMUA warna sekaligus -------------
+     1 piksel -> 1 label warna -> connected components 4-tetangga
+     -> gabungkan blob per warna -> bounding box, centroid, keyakinan. */
+  function detectFrame() {
+    let img;
+    try { img = ctx.getImageData(0, 0, W, H); }
+    catch (e) { return []; }
+    const d = img.data;
+    const labels = new Uint8Array(N);
+    for (let p = 0, q = 0; p < N; p++, q += 4) {
+      const hv = rgb2hsv(d[q], d[q + 1], d[q + 2]);
+      labels[p] = colorIndex(hv[0], hv[1], hv[2]);
+    }
+
+    /* buang bintik noise (pengganti morphology open di Python) */
+    const clean = new Uint8Array(N);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const p = y * W + x, L = labels[p];
+        if (!L) continue;
+        let same = 0;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            const yy = y + dy, xx = x + dx;
+            if (yy < 0 || yy >= H || xx < 0 || xx >= W) continue;
+            if (labels[yy * W + xx] === L) same++;
+          }
+        }
+        clean[p] = same >= 2 ? L : 0;
+      }
+    }
+
+    /* connected components */
+    const seen = new Uint8Array(N), stack = new Int32Array(N), blobs = [];
+    for (let p = 0; p < N; p++) {
+      const L = clean[p];
+      if (!L || seen[p]) continue;
+      let sp = 0; stack[sp++] = p; seen[p] = 1;
+      let minx = W, miny = H, maxx = 0, maxy = 0, sx = 0, sy = 0, cnt = 0;
+      while (sp > 0) {
+        const q = stack[--sp], y = (q / W) | 0, x = q - y * W;
+        cnt++; sx += x; sy += y;
+        if (x < minx) minx = x; if (x > maxx) maxx = x;
+        if (y < miny) miny = y; if (y > maxy) maxy = y;
+        const nb0 = x > 0 ? q - 1 : -1;
+        const nb1 = x < W - 1 ? q + 1 : -1;
+        const nb2 = y > 0 ? q - W : -1;
+        const nb3 = y < H - 1 ? q + W : -1;
+        const nb = [nb0, nb1, nb2, nb3];
+        for (let k = 0; k < 4; k++) {
+          const t = nb[k];
+          if (t < 0 || t >= N || seen[t] || clean[t] !== L) continue;
+          seen[t] = 1; stack[sp++] = t;
+        }
+      }
+      blobs.push({ L, minx, miny, maxx, maxy, sx, sy, cnt });
+    }
+
+    const minBlob = Math.max(20, N * CFG.min_area_ratio * 0.25);
+    const groups = new Map();
+    for (const b of blobs) {
+      if (b.cnt < minBlob) continue;
+      let g = groups.get(b.L);
+      if (!g) {
+        g = { L: b.L, area: 0, minx: b.minx, miny: b.miny,
+              maxx: b.maxx, maxy: b.maxy, sx: 0, sy: 0 };
+        groups.set(b.L, g);
+      }
+      g.area += b.cnt; g.sx += b.sx; g.sy += b.sy;
+      if (b.minx < g.minx) g.minx = b.minx;
+      if (b.maxx > g.maxx) g.maxx = b.maxx;
+      if (b.miny < g.miny) g.miny = b.miny;
+      if (b.maxy > g.maxy) g.maxy = b.maxy;
+    }
+
+    const out = [];
+    for (const g of groups.values()) {
+      const ratio = g.area / N;
+      if (ratio < CFG.min_area_ratio) continue;
+      const spec = active[g.L - 1];
+      out.push({
+        spec, ratio,
+        conf: Math.min(99, 50 + 50 * Math.min(1, ratio / CFG.confidence_ref_ratio)),
+        box: [g.minx, g.miny, g.maxx - g.minx + 1, g.maxy - g.miny + 1],
+        cx: g.sx / g.area, cy: g.sy / g.area
+      });
+    }
+    out.sort((a, b) => b.ratio - a.ratio);
+    return out;
+  }
+
+  /* ------------------------------ HUD ----------------------------- */
+  function drawHud(dets) {
+    const g = ctx;
+    g.fillStyle = 'rgba(18,26,42,.78)'; g.fillRect(0, 0, W, 58);
+    g.fillStyle = '#fff'; g.font = 'bold 12px system-ui,sans-serif';
+    g.fillText('AIMBOT WARNA · REALTIME FULL COLOR', 10, 18);
+    g.font = '11px system-ui,sans-serif'; g.fillStyle = '#8fd0ff';
+    g.fillText((running ? 'KAMERA AKTIF' : 'KAMERA MATI') + '   ' + fps.toFixed(0) + ' FPS', 10, 36);
+    g.fillStyle = '#ffd67a'; g.fillText(dets.length + ' WARNA', W - 74, 36);
+
+    g.strokeStyle = 'rgba(200,220,255,.7)'; g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(W / 2 - 12, H / 2); g.lineTo(W / 2 + 12, H / 2);
+    g.moveTo(W / 2, H / 2 - 12); g.lineTo(W / 2, H / 2 + 12);
+    g.stroke();
+    g.beginPath(); g.arc(W / 2, H / 2, 38, 0, Math.PI * 2); g.stroke();
+
+    for (const d of dets) {
+      const x = d.box[0], y = d.box[1], bw = d.box[2], bh = d.box[3], c = d.spec;
+      g.strokeStyle = c.hex; g.lineWidth = 2; g.strokeRect(x, y, bw, bh);
+      const label = c.name + ' ' + Math.round(d.conf) + '%';
+      g.font = 'bold 10px system-ui,sans-serif';
+      const tw = g.measureText(label).width + 10;
+      const ly = Math.max(62, y - 6);
+      g.fillStyle = c.hex; g.fillRect(x, ly - 14, tw, 14);
+      g.fillStyle = '#fff'; g.fillText(label, x + 5, ly - 4);
+      g.strokeStyle = c.hex; g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(d.cx - 6, d.cy); g.lineTo(d.cx + 6, d.cy);
+      g.moveTo(d.cx, d.cy - 6); g.lineTo(d.cx, d.cy + 6);
+      g.stroke();
+    }
+    if (dets.length) {
+      const d = dets[0];
+      g.strokeStyle = d.spec.hex; g.setLineDash([4, 4]);
+      g.beginPath(); g.moveTo(W / 2, H / 2); g.lineTo(d.cx, d.cy); g.stroke();
+      g.setLineDash([]);
+    }
+
+    g.fillStyle = 'rgba(18,26,42,.78)'; g.fillRect(0, H - 34, W, 34);
+    g.fillStyle = '#ffd67a'; g.font = 'bold 10px system-ui,sans-serif';
+    const names = dets.map(d => d.spec.name).join(', ') || '-';
+    g.fillText(('TERDETEKSI: ' + names).slice(0, 54), 10, H - 20);
+    const dom = dets[0];
+    const ex = dom ? clamp((dom.cx - W / 2) / (W / 2) * 100, -100, 100) : 0;
+    const ey = dom ? clamp((dom.cy - H / 2) / (H / 2) * 100, -100, 100) : 0;
+    g.fillStyle = '#cfe4ff'; g.font = '10px system-ui,sans-serif';
+    g.fillText('T,' + ex.toFixed(1) + ',' + ey.toFixed(1) + ',' +
+               (dom ? dom.spec.id : 0) + ',' + (dom ? Math.round(dom.conf) : 0), 10, H - 6);
+  }
+
+  /* ----------------------------- AUDIO ---------------------------- */
+  function ensureAudio() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) audioCtx = new AC();
+    }
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function playTone(spec) {
+    if (!audioCtx || CFG.sound_mode === 'ucapan' || CFG.sound_mode === 'mati') return;
+    const t0 = audioCtx.currentTime + 0.02;
+    const n = Math.max(1, Math.min(6, spec.beeps || 1));
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * 0.185;
+      const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.value = spec.tone_hz;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.2, t + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+      osc.connect(gain); gain.connect(audioCtx.destination);
+      osc.start(t); osc.stop(t + 0.12);
+    }
+  }
+  function speak(text) {
+    if (CFG.sound_mode === 'nada' || CFG.sound_mode === 'mati') return;
+    try {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'id-ID'; u.rate = 0.95; u.pitch = 1;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* browser memblokir TTS */ }
+  }
+
+  /* --------------------- Voting stabil + pemicuan ----------------- */
+  function updateStable(ids, dom) {
+    const now = performance.now();
+    const set = new Set(ids);
+    for (const c of active) {
+      if (!(c.id in streak)) streak[c.id] = 0;
+      streak[c.id] = set.has(c.id) ? streak[c.id] + 1 : 0;
+    }
+    const stable = active.filter(c => streak[c.id] >= CFG.vote_frames).map(c => c.id);
+    const added = stable.filter(id => stablePrev.indexOf(id) < 0);
+    const removed = stablePrev.filter(id => stable.indexOf(id) < 0);
+    stablePrev = stable;
+
+    if ((added.length || removed.length) && now - lastAudioT > 1200) {
+      lastAudioT = now;
+      if (soundOn) {
+        for (const id of added) {
+          const c = active.find(x => x.id === id);
+          if (c) playTone(c);
+        }
+        if (stable.length) {
+          speak('Warna terdeteksi, ' +
+                stable.map(id => (active.find(x => x.id === id) || {}).speech)
+                      .filter(Boolean).join(', '));
+        }
+      }
+      for (const id of added) {
+        const c = active.find(x => x.id === id);
+        if (c) { pushLog('EVT,COLOR,' + id + ',' + c.name);
+                 pushLog('AUDIO,' + c.key + ',' + c.tone_hz + 'Hz'); }
+      }
+      if (!stable.length) pushLog('EVT,COLOR,0,TIDAK ADA');
+    }
+    if (dom && now - lastLogT > 700) {
+      lastLogT = now;
+      const ex = clamp((dom.cx - W / 2) / (W / 2) * 100, -100, 100);
+      const ey = clamp((dom.cy - H / 2) / (H / 2) * 100, -100, 100);
+      pushLog('T,' + ex.toFixed(1) + ',' + ey.toFixed(1) + ',' +
+              dom.spec.id + ',' + Math.round(dom.conf));
+    }
+  }
+  let lastLogT = 0;
+
+  /* ------------------------------ LOOP ---------------------------- */
+  function loop(ts) {
+    if (!running) return;
+    raf = requestAnimationFrame(loop);
+    const interval = 1000 / (CFG.max_fps || 20);
+    if (ts - lastProc < interval) return;
+    lastProc = ts;
+    if (video.readyState < 2) return;
+    ctx.drawImage(video, 0, 0, W, H);
+    const dets = detectFrame();
+    drawHud(dets);
+    const ids = dets.map(d => d.spec.id);
+    updateChips(ids);
+    updateStable(ids, dets[0]);
+    fpsFrames++;
+    if (ts - lastFpsT > 1000) {
+      fps = fpsFrames * 1000 / (ts - lastFpsT);
+      fpsFrames = 0; lastFpsT = ts;
+      $('fps').textContent = fps.toFixed(0);
+    }
+    $('ncolor').textContent = dets.length;
+    $('aim').textContent = dets.length ? dets[0].spec.name : '-';
+  }
+
+  /* ---------------------------- KAMERA ---------------------------- */
+  async function start() {
+    if (stream && stream.active) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setState('Browser tidak mendukung kamera / butuh HTTPS', 'err');
+      pushLog('LOG,getUserMedia tidak tersedia (butuh HTTPS)');
+      return;
+    }
+    ensureAudio();                       // user gesture -> AudioContext unlocked
+    try {                                // priming Web Speech untuk HP
+      if ('speechSynthesis' in window) {
+        const u = new SpeechSynthesisUtterance(' ');
+        u.volume = 0; window.speechSynthesis.speak(u);
+      }
+    } catch (e) { /* abaikan */ }
+    setState('Meminta izin kamera...');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: facing },
+                 width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      video.srcObject = stream;
+      await video.play();
+      running = true; lastFpsT = performance.now(); fpsFrames = 0; lastProc = 0;
+      setState('Aktif · ' + active.length + ' warna dipantau', 'ok');
+      pushLog('LOG,REALTIME START,' + active.length + ' warna,' + facing);
+      raf = requestAnimationFrame(loop);
+    } catch (e) {
+      let msg = 'Gagal kamera: ' + ((e && e.name) || 'error');
+      if (!window.isSecureContext) msg += ' (butuh HTTPS / localhost)';
+      setState(msg, 'err');
+      pushLog('LOG,' + msg);
+    }
+  }
+  function stop() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = null;
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.srcObject = null;
+    setState('Kamera dimatikan');
+    pushLog('LOG,REALTIME STOP');
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#cbd5e1'; ctx.font = '13px system-ui,sans-serif';
+    ctx.fillText('Ketuk "Aktifkan kamera realtime"', 22, H / 2);
+    $('fps').textContent = '0'; $('ncolor').textContent = '0'; $('aim').textContent = '-';
+    streak = {}; stablePrev = []; updateChips([]);
+  }
+
+  /* ---------------------------- EVENT ----------------------------- */
+  $('start').addEventListener('click', start);
+  $('stop').addEventListener('click', stop);
+  $('flip').addEventListener('click', () => {
+    facing = facing === 'environment' ? 'user' : 'environment';
+    const wasRunning = running;
+    stop();
+    if (wasRunning) start();
+    else setState('Kamera: ' + (facing === 'user' ? 'depan' : 'belakang'));
+  });
+  $('snd').addEventListener('change', e => {
+    soundOn = e.target.checked;
+    if (soundOn) ensureAudio();
+  });
+  $('test').addEventListener('click', () => {
+    ensureAudio();
+    active.forEach((c, i) => setTimeout(() => playTone(c), i * 700));
+    speak('Menguji semua nada warna');
+    pushLog('LOG,UJI SEMUA NADA,' + active.length + ' warna');
+  });
+
+  /* ---------------------------- INIT ------------------------------ */
+  buildChips();
+  ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#cbd5e1'; ctx.font = '13px system-ui,sans-serif';
+  ctx.fillText('Ketuk "Aktifkan kamera realtime"', 22, H / 2);
+  if (!window.isSecureContext) {
+    $('secure').textContent = '· halaman HTTP: kamera mungkin diblokir';
+    $('secure').style.color = '#b91c1c';
+  }
+  pushLog('LOG,MODE,MOCK (Arduino tidak tersambung di browser)');
+  pushLog('LOG,FULL WARNA,' + active.length + ' warna aktif');
+
+  /* Hook uji otomatis (tests/realtime_js_harness.js). Tidak mengubah UI. */
+  window.__aimbotTest = { rgb2hsv, colorIndex, detectFrame, active, CFG };
+})();
+</script>
+</body>
+</html>
