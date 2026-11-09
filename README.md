@@ -1,7 +1,6 @@
 # AimBot Warna 🤖🎨🔊
-### Robot Pembidik Sasaran — modifikasi: **Tebak Warna + Audio Feedback**
 
-Proyek alat + kode program yang dibuat mengikuti poster workshop **"Implementasi Object Detection pada Robot Pembidik Sasaran"** (Rizky Project / Rizky Dermawan), dengan **satu perubahan utama**: robot tidak lagi menebak *jenis objek*, melainkan **menebak WARNA**. **Begitu warna terdeteksi dan stabil, robot langsung memberi suara audio yang khas untuk warna itu** — nada + ucapan Bahasa Indonesia di PC, serta melodi buzzer + nyala LED RGB di board Arduino.
+Proyek alat + kode program yang dibuat mengikuti poster workshop **"Implementasi Object Detection pada Robot Pembidik Sasaran"** , dengan **satu perubahan utama**: robot tidak lagi menebak *jenis objek*, melainkan **menebak WARNA**. **Begitu warna terdeteksi dan stabil, robot langsung memberi suara audio yang khas untuk warna itu** — nada + ucapan Bahasa Indonesia di PC, serta melodi buzzer + nyala LED RGB di board Arduino.
 
 Semua kerangka teknis poster tetap dipertahankan: Python environment → OpenCV image processing → (opsional) YOLO → object tracking di PC; IDE Arduino → hardware → serial data communication → PID controller di robot.
 
