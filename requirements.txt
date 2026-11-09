@@ -1,0 +1,14 @@
+# === Dependency inti (Chapter 1.1 - Python Environment Setup) ===
+opencv-python>=4.8.0
+numpy>=1.24.0
+pyserial>=3.5
+
+# === Streamlit: antarmuka browser, bisa dibuka di HP & online lewat GitHub ===
+# Untuk deploy di Streamlit Community Cloud PAKAI requirements-streamlit.txt
+# (OpenCV headless, tanpa ketergantungan libGL/Qt di container cloud).
+streamlit>=1.33
+pillow>=10.0.0
+
+# === Opsional ===
+# pyttsx3>=2.90        # TTS offline; tanpa ini Windows tetap memakai SAPI lewat PowerShell
+# lihat requirements-optional.txt untuk YOLO (Chapter 1.3)

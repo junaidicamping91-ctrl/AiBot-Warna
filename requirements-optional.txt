@@ -1,0 +1,4 @@
+# Modul tambahan, TIDAK wajib untuk menjalankan robot warna.
+# ultralytics>=8.0.0   # Chapter 1.3 - YOLO Object Detection (opsional, --detector yolo)
+# pyttsx3>=2.90        # TTS lintas platform (Windows sudah punya SAPI bawaan)
+# pytest>=7.0          # alternatif menjalankan tests/ (unittest bawaan juga bisa)

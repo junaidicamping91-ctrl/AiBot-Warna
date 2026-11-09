@@ -1,0 +1,6 @@
+# Paket apt untuk Streamlit Community Cloud (opsional, untuk jaga-jaga).
+# Dipakai hanya bila deploy memilih requirements.txt (OpenCV versi lengkap)
+# yang butuh libGL. Bila memakai requirements-streamlit.txt, file ini aman
+# diabaikan / boleh dihapus.
+libgl1
+libglib2.0-0

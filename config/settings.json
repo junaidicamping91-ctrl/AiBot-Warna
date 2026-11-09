@@ -1,0 +1,52 @@
+{
+  "camera": {
+    "index": 0,
+    "width": 640,
+    "height": 480,
+    "flip_horizontal": false
+  },
+  "detection": {
+    "min_area_ratio": 0.005,
+    "blur_kernel": 5,
+    "morph_iterations": 2,
+    "vote_window": 7,
+    "min_votes": 4,
+    "confidence_threshold": 45.0,
+    "confidence_ref_ratio": 0.15
+  },
+  "tracking": {
+    "deadzone": 6.0,
+    "pid": { "kp": 0.18, "ki": 0.005, "kd": 0.03, "output_limit": 100.0 },
+    "servo_center": 90,
+    "pan_limits": [20, 160],
+    "tilt_limits": [30, 150]
+  },
+  "serial": {
+    "enabled": true,
+    "mock": false,
+    "auto_detect": true,
+    "port": null,
+    "baud": 115200,
+    "timeout": 0.02,
+    "send_every_ms": 50,
+    "log_frames": false
+  },
+  "audio": {
+    "enabled": true,
+    "mode": "both",
+    "cooldown_s": 1.2,
+    "speak_template": "Warna terdeteksi, {warna}",
+    "speak_lang": "id-ID",
+    "volume": 0.6,
+    "sounds_dir": "assets/sounds"
+  },
+  "display": {
+    "show": true,
+    "hud": true,
+    "window_name": "AimBot Warna - Robot Pembidik + Audio"
+  },
+  "logging": {
+    "level": "INFO",
+    "log_file": null
+  }
+}

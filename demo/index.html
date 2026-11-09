@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AimBot Warna — Robot Pembidik + Audio</title>
+<style>
+  :root{
+    --bg:#f6f8fc; --card:#ffffff; --ink:#16233a; --muted:#64748b;
+    --line:#e3e9f3; --accent:#2563eb; --accent-soft:#eaf1ff;
+    --shadow:0 6px 24px rgba(22,35,58,.06), 0 1px 2px rgba(22,35,58,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:radial-gradient(1100px 560px at 8% -12%, #e9f1ff 0%, rgba(233,241,255,0) 62%), var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI", Inter, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1380px;margin:0 auto;padding:26px 22px 44px}
+  header{margin-bottom:20px}
+  .title-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-size:24px;font-weight:750;letter-spacing:-.4px;margin:0}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+    background:var(--accent-soft);color:#1d4ed8;border:1px solid #d3e2ff;padding:5px 11px;border-radius:999px}
+  .subtitle{color:var(--muted);margin:9px 0 0;max-width:940px;font-size:13.5px}
+
+  .grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,1fr);gap:18px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:18px;min-width:0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+  .card h2{font-size:11.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 12px;font-weight:700}
+
+  /* ---- viewport ---- */
+  .viewport{padding:12px}
+  .canvas-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#eef2f9;
+    border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  canvas{width:100%;height:100%;display:block}
+  .sim-pill{position:absolute;top:12px;right:34px;background:rgba(255,255,255,.94);
+    border:1px solid var(--line);border-radius:999px;padding:5px 11px;font-size:11px;font-weight:700;
+    color:#1d4ed8;letter-spacing:.4px;box-shadow:var(--shadow)}
+  .cam-msg{position:absolute;left:14px;right:14px;bottom:14px;background:rgba(255,255,255,.97);
+    border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:10px;padding:11px 13px;
+    font-size:12.5px;color:#7c4a06;box-shadow:var(--shadow);transition:opacity .35s}
+  .hidden{display:none}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{font-size:11px;font-weight:700;letter-spacing:.4px;background:#f4f7fc;border:1px solid var(--line);
+    border-radius:999px;padding:5px 10px;color:var(--muted)}
+  .chip.ok{background:#e8f7ee;color:#15803d;border-color:#c9ecd7}
+  .chip.warn{background:#fff5e6;color:#b45309;border-color:#f6dfba}
+  .tip{color:var(--muted);font-size:12px;margin:12px 2px 0}
+  .tip b{color:var(--ink)}
+
+  /* ---- controls ---- */
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:9px;
+    padding:9px 13px;font-size:12.5px;font-weight:650;cursor:pointer;transition:.15s;font-family:inherit}
+  .btn:hover{border-color:#b9cdf5;background:#f7faff;transform:translateY(-1px)}
+  .btn:disabled{opacity:.55;cursor:default;transform:none}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{background:#1d4ed8}
+  .btn.active{background:var(--accent-soft);border-color:#b9cdf5;color:#1d4ed8;box-shadow:0 0 0 2px #dbe7ff inset}
+  .btn.ok{background:#e8f7ee;border-color:#a7dcbb;color:#15803d}
+  .btn-row{display:flex;flex-wrap:wrap;gap:8px}
+  .field{margin-top:14px}
+  .field label{display:flex;justify-content:space-between;font-size:12px;font-weight:650;margin-bottom:7px}
+  .field label span{color:var(--accent);font-variant-numeric:tabular-nums}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  select{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 10px;background:#fff;
+    color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+  .inline{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .inline label{font-size:12.5px;font-weight:650;display:flex;align-items:center;gap:7px;cursor:pointer}
+  input[type=checkbox]{accent-color:var(--accent);width:16px;height:16px;cursor:pointer}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .sep{height:1px;background:var(--line);margin:15px 0 0}
+
+  /* ---- status ---- */
+  .card-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .src{font-size:11px;color:var(--muted);font-weight:600}
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .stat{background:#f8fafc;border:1px solid var(--line);border-radius:11px;padding:11px 12px}
+  .stat.wide{grid-column:1/-1}
+  .stat-l{font-size:10.5px;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);font-weight:700}
+  .stat-v{font-size:20px;font-weight:750;letter-spacing:-.3px;margin-top:5px;display:flex;align-items:center;gap:9px}
+  .stat-v.small{font-size:12.5px;font-weight:600;line-height:1.45;color:var(--ink)}
+  .cdot{width:14px;height:14px;border-radius:50%;background:#cbd5e1;flex:none;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+  .bar{height:7px;background:#e9eef7;border-radius:99px;margin-top:9px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:99px;transition:width .2s}
+  .gauge-row{display:flex;align-items:center;gap:10px;margin-top:9px;font-size:11px;color:var(--muted);font-weight:700}
+  .gauge-row b{font-size:13px;color:var(--ink);width:44px;text-align:right;font-variant-numeric:tabular-nums}
+  .gauge{position:relative;flex:1;height:8px;background:#e9eef7;border-radius:99px}
+  .gauge i{position:absolute;top:-4px;left:50%;width:15px;height:15px;border-radius:50%;
+    background:var(--accent);border:2px solid #fff;box-shadow:0 1px 5px rgba(22,35,58,.25);transform:translateX(-50%)}
+  .hint{font-size:11px;color:var(--muted);margin-top:7px}
+
+  /* ---- legend ---- */
+  .swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .swatch{display:flex;align-items:center;gap:9px;padding:9px;border:1px solid var(--line);
+    border-radius:10px;cursor:pointer;background:#fff;transition:.15s;min-width:0}
+  .swatch:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:#b9cdf5}
+  .swatch.active{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 2px #dbe7ff inset}
+  .swatch .cc{width:26px;height:26px;border-radius:8px;flex:none;border:1px solid rgba(0,0,0,.07)}
+  .swatch .nm{font-weight:750;font-size:11.5px;letter-spacing:.3px}
+  .swatch .sub{font-size:10px;color:var(--muted);white-space:nowrap}
+  table.map{width:100%;border-collapse:collapse;margin-top:13px;font-size:11.5px}
+  table.map th{text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;
+    letter-spacing:.7px;padding:6px 8px;border-bottom:1px solid var(--line)}
+  table.map td{padding:6px 8px;border-bottom:1px solid #f0f4fa}
+  table.map tbody tr{cursor:pointer;transition:background .15s}
+  table.map tbody tr:hover{background:#f7faff}
+  table.map tbody tr.active{background:var(--accent-soft)}
+  table.map tr:last-child td{border-bottom:0}
+  table.map .lid{color:var(--muted);font-variant-numeric:tabular-nums;width:34px}
+  table.map .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px;vertical-align:middle}
+  table.map .lnada{color:var(--muted);font-variant-numeric:tabular-nums}
+  .legend-note{font-size:11px;color:var(--muted);margin:9px 0 0}
+
+  /* ---- serial ---- */
+  .serial-head{display:flex;justify-content:space-between;align-items:baseline}
+  .serial-head span{font-size:10.5px;color:var(--muted);font-weight:600}
+  .serial{height:186px;overflow-y:auto;background:#f8fafc;border:1px solid var(--line);
+    border-radius:10px;padding:10px;font-family:Consolas,"Courier New",monospace;font-size:11.5px;margin-top:10px}
+  .log-line{display:flex;gap:8px;padding:2px 0;white-space:nowrap}
+  .log-line .ts{color:#94a3b8}
+  .log-line .arw{font-weight:700}
+  .log-line .rx{color:#15803d}
+  .log-line .tx{color:#2563eb}
+  .log-line .msg{color:#334155}
+
+  /* ---- tentang ---- */
+  .chapters{display:flex;flex-wrap:wrap;gap:6px}
+  .chapters span{font-size:11px;background:#f4f7fc;border:1px solid var(--line);
+    border-radius:7px;padding:5px 9px;color:#475569}
+  .note{font-size:12px;color:var(--muted);margin:12px 0 0}
+  .note b{color:var(--ink)}
+
+  @media (max-width:980px){
+    .grid{grid-template-columns:1fr}
+    .wrap{padding:20px 14px 34px}
+    h1{font-size:20px}
+  }
+  @media (max-width:460px){
+    .swatches{grid-template-columns:repeat(2,1fr)}
+    .two{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="title-row">
+      <h1>AimBot Warna — Robot Pembidik + Audio</h1>
+      <span class="badge">SIMULASI · tanpa hardware</span>
+    </div>
+    <p class="subtitle">
+      Simulator tanpa hardware dari alur poster <em>«Implementasi Object Detection pada Robot Pembidik Sasaran»</em>:
+      Python/OpenCV + YOLO di PC → perintah serial ke Arduino → servo pan–tilt dengan PID.
+      Versi ini mengganti deteksi objek dengan <b>tebakan warna</b>, lalu robot <b>berbicara / memainkan nada</b> sesuai warna yang terdeteksi.
+    </p>
+  </header>
+
+  <main class="grid">
+    <!-- ================= LEFT : viewport ================= -->
+    <section class="col">
+      <div class="card viewport">
+        <div class="canvas-wrap">
+          <canvas id="view" width="960" height="540"></canvas>
+          <div class="sim-pill" id="simPill">MODE SIMULASI</div>
+          <div class="cam-msg hidden" id="camMsg"></div>
+        </div>
+        <div class="chips">
+          <span class="chip" id="chipMode">SUMBER: SIMULASI</span>
+          <span class="chip" id="chipFps">FPS 30</span>
+          <span class="chip warn" id="chipTrack">SEARCHING</span>
+          <span class="chip" id="chipDetect">DETEKSI: HSV</span>
+        </div>
+        <p class="tip"><b>Cara pakai:</b> klik kartu warna di kanan untuk mengganti target → kotak HUD membidik → servo PAN/TILT mengikuti → nada/ucapan diputar setelah kamu menekan <b>Aktifkan Suara</b>.</p>
+      </div>
+
+      <div class="card">
+        <h2>Tentang proyek nyata</h2>
+        <p class="note" style="margin-top:0">Bab–bab pada poster workshop yang dicerminkan simulator ini:</p>
+        <div class="chapters" id="chapters" style="margin-top:10px"></div>
+        <p class="note">Modifikasi: YOLO → <b>klasifikasi HSV 6 warna</b>, dan keluaran → <b>umpan balik audio per warna</b>. Semua berjalan di browser, tanpa kamera / Arduino / Python.</p>
+      </div>
+    </section>
+
+    <!-- ================= RIGHT : control panel ================= -->
+    <section class="col">
+
+      <div class="card">
+        <h2>Kontrol</h2>
+        <div class="btn-row">
+          <button class="btn primary" id="btnSound">Aktifkan Suara</button>
+          <button class="btn" id="btnCam">Aktifkan Kamera</button>
+          <button class="btn" id="btnStart">Mulai</button>
+          <button class="btn" id="btnStop">Hentikan</button>
+        </div>
+        <div class="sep"></div>
+        <div class="two" style="margin-top:14px">
+          <div class="field" style="margin:0">
+            <label for="modeSound">Mode Suara</label>
+            <select id="modeSound">
+              <option value="nada">Nada</option>
+              <option value="ucapan">Ucapan</option>
+              <option value="keduanya" selected>Keduanya</option>
+            </select>
+          </div>
+          <div class="field" style="margin:0">
+            <label for="sens">Sensitivitas <span id="sensVal">2%</span></label>
+            <input type="range" id="sens" min="1" max="40" step="1" value="2">
+            <label for="area" style="margin-top:12px">Area Minimum <span id="areaVal">40 px</span></label>
+            <input type="range" id="area" min="0" max="1200" step="20" value="40">
+          </div>
+        </div>
+        <div class="inline">
+          <label><input type="checkbox" id="mute"> Bisukan semua suara</label>
+        </div>
+        <div class="sep"></div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn active" id="btnRandom">Warna acak: aktif</button>
+          <button class="btn" id="btnTest">Uji Semua Warna</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2 style="margin:0">Status</h2><span class="src" id="stSrc">Sumber: SIMULASI</span></div>
+        <div class="stat-grid" style="margin-top:12px">
+          <div class="stat">
+            <div class="stat-l">Warna terdeteksi</div>
+            <div class="stat-v"><span class="cdot" id="stColorDot"></span><span id="stColor">—</span></div>
+          </div>
+          <div class="stat">
+            <div class="stat-l">Keyakinan</div>
+            <div class="stat-v" id="stConf">0%</div>
+            <div class="bar"><i id="stConfBar"></i></div>
+          </div>
+          <div class="stat wide">
+            <div class="stat-l">Servo pan–tilt (PID)</div>
+            <div class="gauge-row">PAN <div class="gauge"><i id="stPanBar"></i></div><b id="stPan">90°</b></div>
+            <div class="gauge-row">TILT<div class="gauge"><i id="stTiltBar"></i></div><b id="stTilt">90°</b></div>
+          </div>
+          <div class="stat wide">
+            <div class="stat-l">Suara terakhir <span id="stTrack" style="color:#b45309;text-transform:none;letter-spacing:0;margin-left:6px">· MENCARI</span></div>
+            <div class="stat-v small" id="stLast">Belum ada — klik «Aktifkan Suara»</div>
+            <div class="hint">Browser memblokir audio otomatis; aktifkan sekali lewat tombol di atas.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Peta warna · klik untuk jadi target</h2>
+        <div class="swatches" id="swatches"></div>
+        <table class="map">
+          <thead><tr><th>ID</th><th>Nama</th><th>Nada</th></tr></thead>
+          <tbody id="legendBody"></tbody>
+        </table>
+        <p class="legend-note">ID dipakai pada pesan serial <code>EVT,COLOR,&lt;id&gt;,&lt;nama&gt;</code>. Jumlah bip = nomor ID.</p>
+      </div>
+
+      <div class="card">
+        <div class="serial-head"><h2 style="margin:0">Log Serial (USB)</h2><span>↓ terima · ↑ kirim</span></div>
+        <div class="serial" id="serial"></div>
+      </div>
+
+    </section>
+  </main>
+</div>
+
+<video id="cam" playsinline muted hidden></video>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- Color map: id -> nama -> nada ---------- */
+  const COLORS = [
+    { id:1, key:'merah',  name:'MERAH',  hex:'#e53935', freq:440, beeps:1 },
+    { id:2, key:'hijau',  name:'HIJAU',  hex:'#2e9e5b', freq:523, beeps:2 },
+    { id:3, key:'biru',   name:'BIRU',   hex:'#2563eb', freq:587, beeps:3 },
+    { id:4, key:'kuning', name:'KUNING', hex:'#f2c200', freq:659, beeps:4 },
+    { id:5, key:'oranye', name:'ORANYE', hex:'#ef8a17', freq:698, beeps:5 },
+    { id:6, key:'ungu',   name:'UNGU',   hex:'#7b3fb5', freq:784, beeps:6 },
+  ];
+  const BY_KEY = Object.fromEntries(COLORS.map(c => [c.key, c]));
+
+  const SW = 160, SH = 90;          // downscaled analysis frame
+  const DW = 960, DH = 540;         // display frame
+  const SX = DW / SW, SY = DH / SH;
+
+  /* ---------- DOM ---------- */
+  const $ = id => document.getElementById(id);
+  const view = $('view'), ctx = view.getContext('2d');
+  const cam = $('cam');
+  const sample = document.createElement('canvas');
+  sample.width = SW; sample.height = SH;
+  const sctx = sample.getContext('2d', { willReadFrequently:true });
+
+  const btnSound=$('btnSound'), btnCam=$('btnCam'), btnStart=$('btnStart'), btnStop=$('btnStop');
+  const btnRandom=$('btnRandom'), btnTest=$('btnTest');
+  const modeSound=$('modeSound'), sens=$('sens'), area=$('area'), mute=$('mute');
+  const camMsg=$('camMsg'), simPill=$('simPill');
+
+  /* ---------- State ---------- */
+  let mode = 'simulasi', running = false, rafId = null, camStream = null;
+  let simColor = 'merah', autoRandom = true, nextRandom = 0;
+  let testActive = false, testIdx = 0, testUntil = 0, prevAuto = true;
+  let votes = [], gStable = null, gActive = null, gConf = 0, lastActive = null;
+  let lastPlayed = null, lastPlayTime = -9999;
+  let pan = 90, tilt = 90, prevEx = 0, prevEy = 0;
+  let fps = 30, lastFrame = 0, lastPos = 0, camMsgTimer = null;
+  let audioCtx = null, masterGain = null, audioUnlocked = false;
+
+  const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+
+  /* ---------- Small helpers ---------- */
+  function hexA(hex, a){
+    const n = parseInt(hex.slice(1), 16);
+    return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;
+  }
+  function rr(x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  function txt(s,x,y,o={}){
+    const size=o.size||16, weight=o.weight||'600', align=o.align||'left';
+    ctx.font = `${weight} ${size}px "Segoe UI", Inter, system-ui, sans-serif`;
+    ctx.textAlign = align; ctx.textBaseline = 'alphabetic';
+    if (o.halo !== false){
+      ctx.lineWidth = 4; ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(255,255,255,.92)'; ctx.strokeText(s,x,y);
+    }
+    ctx.fillStyle = o.color || '#16233a'; ctx.fillText(s,x,y);
+  }
+
+  /* ---------- HSV + classification ---------- */
+  function rgb2hsv(r,g,b){
+    r/=255; g/=255; b/=255;
+    const max=Math.max(r,g,b), min=Math.min(r,g,b), d=max-min;
+    let h=0;
+    if (d>0){
+      if (max===r) h=60*(((g-b)/d)%6);
+      else if (max===g) h=60*((b-r)/d+2);
+      else h=60*((r-g)/d+4);
+    }
+    if (h<0) h+=360;
+    return { h, s: max===0?0:d/max, v:max };
+  }
+  function classify(h){
+    if (h<12 || h>340) return 'merah';           // red hue wrap-around
+    if (h<=34) return 'oranye';
+    if (h<=70) return 'kuning';
+    if (h>=75 && h<=165) return 'hijau';
+    if (h>=190 && h<=255) return 'biru';
+    if (h>=265 && h<=335) return 'ungu';
+    return null;                                  // neutral buffer zones
+  }
+  function detect(data){
+    const counts={}, geo={};
+    for (const c of COLORS){
+      counts[c.key]=0;
+      geo[c.key]={minx:SW,miny:SH,maxx:0,maxy:0,sx:0,sy:0};
+    }
+    let total=0;
+    for (let y=0;y<SH;y++){
+      for (let x=0;x<SW;x++){
+        const i=(y*SW+x)*4;
+        const {h,s,v}=rgb2hsv(data[i],data[i+1],data[i+2]);
+        if (s<0.30 || v<0.22) continue;          // grey / too dark
+        const k=classify(h); if(!k) continue;
+        counts[k]++; total++;
+        const q=geo[k];
+        if(x<q.minx)q.minx=x; if(x>q.maxx)q.maxx=x;
+        if(y<q.miny)q.miny=y; if(y>q.maxy)q.maxy=y;
+        q.sx+=x; q.sy+=y;
+      }
+    }
+    let best=null, bestN=0;
+    for (const c of COLORS) if (counts[c.key]>bestN){ bestN=counts[c.key]; best=c.key; }
+    const share = bestN/(SW*SH);
+    let result=null;
+    if (best && share >= sens.value/100 && bestN >= +area.value){
+      const q=geo[best];
+      result={
+        key:best, count:bestN, share, purity: total?bestN/total:0,
+        box:{x:q.minx,y:q.miny,w:q.maxx-q.minx+1,h:q.maxy-q.miny+1},
+        cx:q.sx/bestN, cy:q.sy/bestN
+      };
+    }
+    return result;
+  }
+
+  /* ---------- Simulated scene (same pipeline as camera) ---------- */
+  function drawSimScene(){
+    const c=BY_KEY[simColor], t=performance.now()/1000;
+    sctx.fillStyle='#eef2f9'; sctx.fillRect(0,0,SW,SH);   // neutral backdrop
+    sctx.fillStyle='#e6ecf6'; sctx.fillRect(0,0,SW,16); sctx.fillRect(0,SH-16,SW,16);
+    const cx=SW/2+Math.sin(t*0.7)*34, cy=SH/2+Math.cos(t*0.9)*17, r=26;
+    sctx.save(); sctx.shadowColor=c.hex; sctx.shadowBlur=14;
+    sctx.fillStyle=c.hex; sctx.beginPath(); sctx.arc(cx,cy,r,0,Math.PI*2); sctx.fill();
+    sctx.restore();
+    return {cx,cy,r,color:c};
+  }
+
+  /* ---------- Canvas painting ---------- */
+  function drawGrid(){
+    ctx.strokeStyle='rgba(37,99,235,.065)'; ctx.lineWidth=1;
+    for(let x=0;x<=DW;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,DH);ctx.stroke();}
+    for(let y=0;y<=DH;y+=60){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(DW,y);ctx.stroke();}
+  }
+  function drawFrame(scene){
+    ctx.clearRect(0,0,DW,DH);
+    if (mode==='kamera' && cam.readyState>=2){
+      ctx.drawImage(cam,0,0,DW,DH);
+    } else {
+      const g=ctx.createLinearGradient(0,0,0,DH);
+      g.addColorStop(0,'#fbfdff'); g.addColorStop(1,'#e8eff9');
+      ctx.fillStyle=g; ctx.fillRect(0,0,DW,DH);
+      drawGrid();
+      if (scene){
+        const X=scene.cx*SX, Y=scene.cy*SY, R=scene.r*SX;
+        const glow=ctx.createRadialGradient(X,Y,R*.3,X,Y,R*1.8);
+        glow.addColorStop(0,hexA(scene.color.hex,.30)); glow.addColorStop(1,hexA(scene.color.hex,0));
+        ctx.fillStyle=glow; ctx.beginPath(); ctx.arc(X,Y,R*1.8,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle=scene.color.hex; ctx.beginPath(); ctx.arc(X,Y,R,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle='rgba(255,255,255,.8)'; ctx.lineWidth=4; ctx.stroke();
+      }
+    }
+  }
+  function drawHUD(scene){
+    const m=22, L=34;
+    // corner brackets
+    ctx.strokeStyle='rgba(37,99,235,.8)'; ctx.lineWidth=3; ctx.lineCap='round';
+    const br=(x,y,dx,dy)=>{ctx.beginPath();ctx.moveTo(x+dx*L,y);ctx.lineTo(x,y);ctx.lineTo(x,y+dy*L);ctx.stroke();};
+    br(m,m,1,1); br(DW-m,m,-1,1); br(m,DH-m,1,-1); br(DW-m,DH-m,-1,-1);
+    // center crosshair
+    const cx=DW/2, cy=DH/2;
+    ctx.strokeStyle='rgba(22,35,58,.38)'; ctx.lineWidth=1.6;
+    ctx.beginPath();
+    ctx.moveTo(cx-28,cy);ctx.lineTo(cx-9,cy); ctx.moveTo(cx+9,cy);ctx.lineTo(cx+28,cy);
+    ctx.moveTo(cx,cy-28);ctx.lineTo(cx,cy-9); ctx.moveTo(cx,cy+9);ctx.lineTo(cx,cy+28);
+    ctx.stroke(); ctx.beginPath(); ctx.arc(cx,cy,7,0,Math.PI*2); ctx.stroke();
+    // top-left monitor lines
+    txt('AimBot Warna · MONITOR', 34, 42, {size:15,weight:'700',color:'#2563eb'});
+    txt('FPS '+Math.round(fps), 34, 66, {size:15});
+    txt(gActive?'TRACKING':'SEARCHING', 34, 90,
+      {size:15,weight:'800',color:gActive?'#15803d':'#b45309'});
+    // bottom lines
+    txt(`PAN ${Math.round(pan)}°  TILT ${Math.round(tilt)}°`, 34, DH-30, {size:16,weight:'700'});
+    txt('OpenCV / HSV → Arduino · PID', DW-34, DH-30, {size:13,color:'#64748b',align:'right'});
+
+    if (gActive){
+      const c=BY_KEY[gActive.key];
+      const bx=gActive.box.x*SX, by=gActive.box.y*SY;
+      const bw=gActive.box.w*SX, bh=gActive.box.h*SY;
+      const ax=gActive.cx*SX, ay=gActive.cy*SY;
+      // aim vector
+      ctx.setLineDash([8,7]); ctx.strokeStyle=hexA(c.hex,.85); ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ax,ay); ctx.stroke(); ctx.setLineDash([]);
+      // bounding box
+      ctx.strokeStyle=c.hex; ctx.lineWidth=3; ctx.lineJoin='round'; ctx.strokeRect(bx,by,bw,bh);
+      ctx.lineWidth=5;
+      const t=Math.min(22,bw/3,bh/3);
+      ctx.beginPath();
+      ctx.moveTo(bx,by+t);ctx.lineTo(bx,by);ctx.lineTo(bx+t,by);
+      ctx.moveTo(bx+bw-t,by);ctx.lineTo(bx+bw,by);ctx.lineTo(bx+bw,by+t);
+      ctx.moveTo(bx,by+bh-t);ctx.lineTo(bx,by+bh);ctx.lineTo(bx+t,by+bh);
+      ctx.moveTo(bx+bw-t,by+bh);ctx.lineTo(bx+bw,by+bh);ctx.lineTo(bx+bw,by+bh-t);
+      ctx.stroke();
+      // label pill
+      const label=`${c.name} ${Math.round(gConf)}%`;
+      ctx.font='700 18px "Segoe UI", Inter, system-ui, sans-serif';
+      const pw=ctx.measureText(label).width+28, ph=30;
+      const px=bx, py=by>52 ? by-36 : by+bh+8;
+      rr(px,py,pw,ph,9); ctx.fillStyle=c.hex; ctx.fill();
+      txt(label,px+14,py+21,{size:18,weight:'700',color:'#fff',halo:false});
+      // aim marker
+      ctx.strokeStyle=c.hex; ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(ax,ay,11,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(ax-18,ay);ctx.lineTo(ax+18,ay);
+      ctx.moveTo(ax,ay-18);ctx.lineTo(ax,ay+18);ctx.stroke();
+    } else {
+      // scanning line + search pill
+      const sy=70+(Math.sin(performance.now()/700)*.5+.5)*(DH-150);
+      ctx.setLineDash([14,10]); ctx.strokeStyle='rgba(37,99,235,.4)'; ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(32,sy);ctx.lineTo(DW-32,sy);ctx.stroke();ctx.setLineDash([]);
+      const label='MENCARI WARNA...';
+      ctx.font='700 20px "Segoe UI", Inter, system-ui, sans-serif';
+      const pw=ctx.measureText(label).width+42, ph=42, px=(DW-pw)/2, py=DH/2-21;
+      rr(px,py,pw,ph,12); ctx.fillStyle='rgba(255,255,255,.95)'; ctx.fill();
+      ctx.strokeStyle='#2563eb'; ctx.lineWidth=2; ctx.stroke();
+      txt(label,DW/2,py+28,{size:20,weight:'700',color:'#1d4ed8',align:'center',halo:false});
+    }
+  }
+  function paintIdle(){
+    drawFrame(null); drawGrid();
+    ctx.fillStyle='rgba(255,255,255,.9)';
+    rr(DW/2-190,DH/2-28,380,56,12); ctx.fill();
+    ctx.strokeStyle='#cbd8ef'; ctx.lineWidth=1.5; ctx.stroke();
+    txt('DIHENTIKAN · tekan MULAI',DW/2,DH/2+7,
+      {size:19,weight:'700',color:'#475569',align:'center',halo:false});
+  }
+
+  /* ---------- Servo P(I)D-ish loop ---------- */
+  function updateServo(now){
+    let tx,ty;
+    if (gActive){
+      const ex=(gActive.cx-SW/2)/(SW/2), ey=(gActive.cy-SH/2)/(SH/2);
+      tx=90+ex*70; ty=90+ey*60;
+    } else {
+      tx=90+Math.sin(now/900)*18; ty=90+Math.cos(now/1100)*12;   // gentle search sweep
+    }
+    tx=clamp(tx,20,160); ty=clamp(ty,30,150);
+    const ex=tx-pan, ey=ty-tilt;
+    pan =clamp(pan +ex*0.10+(ex-prevEx)*0.03,20,160);
+    tilt=clamp(tilt+ey*0.10+(ey-prevEy)*0.03,30,150);
+    prevEx=ex; prevEy=ey;
+  }
+
+  /* ---------- Audio ---------- */
+  function playTone(c){
+    if (!audioCtx) return;
+    const dest=masterGain||audioCtx.destination;
+    const t0=audioCtx.currentTime+0.01, on=0.11, gap=0.07;
+    for (let i=0;i<c.beeps;i++){
+      const t=t0+i*(on+gap);
+      const osc=audioCtx.createOscillator(), g=audioCtx.createGain();
+      osc.type='triangle'; osc.frequency.setValueAtTime(c.freq,t);
+      if (i===c.beeps-1 && c.beeps>1) osc.frequency.linearRampToValueAtTime(c.freq*1.18,t+on);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.linearRampToValueAtTime(0.22,t+0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+on);
+      osc.connect(g); g.connect(dest);
+      osc.start(t); osc.stop(t+on+0.03);
+    }
+  }
+  function speak(c){
+    if (mute.checked) return;
+    try{
+      window.speechSynthesis.cancel();
+      const u=new SpeechSynthesisUtterance('Warna terdeteksi: '+c.name.toLowerCase());
+      u.lang='id-ID'; u.rate=1.05; u.pitch=1; u.volume=.9;
+      const v=window.speechSynthesis.getVoices().find(x=>/^id/i.test(x.lang));
+      if(v) u.voice=v;
+      window.speechSynthesis.speak(u);
+    }catch(e){/* ignore */}
+  }
+  function playAudio(c){
+    const mode=modeSound.value;
+    const nada=`Nada ${c.name} · ${c.freq} Hz · ${c.beeps} bip`;
+    const ucap=`Ucapan: «Warna terdeteksi: ${c.name.toLowerCase()}»`;
+    const desc = mode==='nada'?nada : mode==='ucapan'?ucap : `${nada} + ucapan`;
+    if (!audioUnlocked){ $('stLast').textContent='Suara belum aktif — klik «Aktifkan Suara»'; return; }
+    if (mute.checked){ $('stLast').textContent='Dibisukan · '+desc; return; }
+    const wantTone = mode==='nada'||mode==='keduanya';
+    const wantSpeech = mode==='ucapan'||mode==='keduanya';
+    const speechOK = ('speechSynthesis' in window) && !!window.SpeechSynthesisUtterance;
+    if (wantTone || !speechOK) playTone(c);
+    if (wantSpeech && speechOK) setTimeout(()=>speak(c), wantTone?c.beeps*180+130:0);
+    $('stLast').textContent = (wantSpeech && !speechOK) ? `${desc} (ucapan tidak tersedia → nada)` : desc;
+  }
+  function unlockSound(){
+    try{
+      if (!audioCtx){
+        const AC=window.AudioContext||window.webkitAudioContext;
+        if (AC){ audioCtx=new AC(); masterGain=audioCtx.createGain(); masterGain.gain.value=.9; masterGain.connect(audioCtx.destination); }
+      }
+      if (audioCtx && audioCtx.state==='suspended') audioCtx.resume();
+      audioUnlocked=true;
+      btnSound.textContent='Suara aktif'; btnSound.classList.add('ok'); btnSound.disabled=true;
+      $('stLast').textContent='Suara aktif — menunggu perubahan warna';
+      if (gStable) playAudio(BY_KEY[gStable]);   // immediate feedback on unlock
+    }catch(e){
+      $('stLast').textContent='Audio tidak didukung browser ini';
+    }
+  }
+
+  /* ---------- Serial log ---------- */
+  function addLog(dir,text){
+    const line=document.createElement('div'); line.className='log-line';
+    const d=new Date();
+    const ts=[d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');
+    line.innerHTML=`<span class="ts">${ts}</span><span class="arw ${dir==='↓'?'rx':'tx'}">${dir}</span><span class="msg"></span>`;
+    line.querySelector('.msg').textContent=text;
+    const box=$('serial'); box.appendChild(line);
+    while(box.children.length>10) box.removeChild(box.firstChild);
+    box.scrollTop=box.scrollHeight;
+  }
+  function emitSerial(key){
+    const c=BY_KEY[key];
+    const ex=gActive?Math.round(gActive.cx-SW/2):0;
+    const ey=gActive?Math.round(gActive.cy-SH/2):0;
+    addLog('↓',`EVT,COLOR,${c.id},${c.name}`);
+    addLog('↑',`T,${ex},${ey},${c.id},${Math.round(gConf)||97}`);
+  }
+
+  /* ---------- DOM update ---------- */
+  function updateModeUI(){
+    const camera=mode==='kamera';
+    $('chipMode').textContent='SUMBER: '+(camera?'KAMERA':'SIMULASI');
+    $('stSrc').textContent='Sumber: '+(camera?'KAMERA':'SIMULASI');
+    simPill.textContent=camera?'MODE KAMERA':'MODE SIMULASI';
+    simPill.classList.toggle('hidden',false);
+  }
+  function updateDOM(){
+    const c=gActive?BY_KEY[gActive.key]:null;
+    $('stColor').textContent=c?c.name:'—';
+    $('stColorDot').style.background=c?c.hex:'#cbd5e1';
+    $('stConf').textContent=c?Math.round(gConf)+'%':'0%';
+    $('stConfBar').style.width=(c?gConf:0)+'%';
+    $('stConfBar').style.background=c?c.hex:'#cbd5e1';
+    $('stPan').textContent=Math.round(pan)+'°';
+    $('stTilt').textContent=Math.round(tilt)+'°';
+    $('stPanBar').style.left=((pan-20)/140*100)+'%';
+    $('stTiltBar').style.left=((tilt-30)/120*100)+'%';
+    $('stTrack').textContent=c?'· TRACKING':'· MENCARI';
+    $('stTrack').style.color=c?'#15803d':'#b45309';
+    $('chipFps').textContent='FPS '+Math.round(fps);
+    $('chipTrack').textContent=c?'TRACKING':'SEARCHING';
+    $('chipTrack').className='chip '+(c?'ok':'warn');
+    $('chipDetect').textContent=c?`DETEKSI: ${c.name}`:'DETEKSI: HSV';
+  }
+
+  /* ---------- Auto cycle / test-all ---------- */
+  function highlightLegend(){
+    document.querySelectorAll('.swatch').forEach(el=>el.classList.toggle('active',el.dataset.key===simColor));
+    document.querySelectorAll('#legendBody tr').forEach(el=>el.classList.toggle('active',el.dataset.key===simColor));
+  }
+  function playTestColor(c){
+    lastPlayed=c.key; lastPlayTime=performance.now();
+    playAudio(c); emitSerial(c.key);
+  }
+  function startTest(){
+    if(testActive) return;
+    prevAuto=autoRandom; autoRandom=false;
+    btnRandom.classList.remove('active'); btnRandom.disabled=true;
+    testActive=true; testIdx=0; testUntil=performance.now()+1600;
+    btnTest.classList.add('active'); btnTest.textContent='Menguji... (1/6)';
+    simColor=COLORS[0].key; highlightLegend(); playTestColor(COLORS[0]);
+    addLog('↓','LOG,UJI,SEMUA,WARNA');
+  }
+  function endTest(){
+    testActive=false; autoRandom=prevAuto;
+    btnRandom.disabled=false; btnRandom.classList.toggle('active',autoRandom);
+    btnTest.classList.remove('active'); btnTest.textContent='Uji Semua Warna';
+    nextRandom=performance.now()+1800;
+    addLog('↓','LOG,UJI,SELESAI');
+  }
+  function handleAuto(now){
+    if (testActive){
+      if (now>=testUntil){
+        testIdx++;
+        if (testIdx>=COLORS.length){ endTest(); }
+        else {
+          simColor=COLORS[testIdx].key; testUntil=now+1600;
+          btnTest.textContent=`Menguji... (${testIdx+1}/6)`;
+          highlightLegend(); playTestColor(COLORS[testIdx]);
+        }
+      }
+      return;
+    }
+    if (autoRandom && now>=nextRandom){
+      const others=COLORS.filter(c=>c.key!==simColor);
+      simColor=others[Math.floor(Math.random()*others.length)].key;
+      nextRandom=now+2200; highlightLegend();
+    }
+  }
+
+  /* ---------- Main loop ---------- */
+  function loop(now){
+    if(!running) return;
+    rafId=requestAnimationFrame(loop);
+    if(lastFrame){ const dt=now-lastFrame; if(dt>0) fps=fps*.9+(1000/dt)*.1; }
+    lastFrame=now;
+
+    handleAuto(now);
+
+    // 1) build the analysis frame (camera or synthetic target)
+    let scene=null;
+    if (mode==='kamera'){
+      if (cam.readyState>=2){ try{ sctx.drawImage(cam,0,0,SW,SH); }catch(e){} }
+      else { sctx.fillStyle='#eef2f9'; sctx.fillRect(0,0,SW,SH); }
+    } else {
+      scene=drawSimScene();
+    }
+
+    // 2) classify pixels + temporal voting (majority of last 7 frames)
+    let det=null;
+    try{ det=detect(sctx.getImageData(0,0,SW,SH).data); }catch(e){ return; }
+    votes.push(det?det.key:null); if(votes.length>7) votes.shift();
+    const tally={};
+    for(const v of votes) if(v) tally[v]=(tally[v]||0)+1;
+    let maj=null,majN=0;
+    for(const k in tally) if(tally[k]>majN){majN=tally[k];maj=k;}
+    gStable = majN>=4 ? maj : null;
+
+    if (gStable && det && det.key===gStable){ gActive=det; lastActive=det; }
+    else if (gStable && lastActive && lastActive.key===gStable) gActive=lastActive;
+    else gActive=null;
+
+    // 3) smoothed confidence
+    if (gActive){
+      const raw=clamp(52+42*gActive.purity+4*Math.min(1,gActive.share/0.12)+(Math.random()*4-2),0,98);
+      gConf=gConf*.82+raw*.18;
+    } else gConf*=.9;
+
+    // 4) servo PID + audio / serial on STABLE color change only
+    updateServo(now);
+    if (!testActive && gStable && gStable!==lastPlayed && now-lastPlayTime>1200){
+      lastPlayed=gStable; lastPlayTime=now;
+      playAudio(BY_KEY[gStable]); emitSerial(gStable);
+    }
+    if (now-lastPos>1000){ addLog('↓',`POS,${Math.round(pan)},${Math.round(tilt)},1`); lastPos=now; }
+
+    // 5) paint
+    drawFrame(scene); drawHUD(scene); updateDOM();
+  }
+
+  /* ---------- Camera ---------- */
+  function showCamMsg(text){
+    camMsg.textContent=text; camMsg.classList.remove('hidden');
+    clearTimeout(camMsgTimer);
+    camMsgTimer=setTimeout(()=>camMsg.classList.add('hidden'),7500);
+  }
+  function stopCamera(){
+    if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+    cam.srcObject=null;
+  }
+  async function activateCamera(){
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      showCamMsg('Browser ini tidak menyediakan getUserMedia (atau halaman dibuka lewat file://). MODE SIMULASI tetap aktif — klik kartu warna di kanan.');
+      return;
+    }
+    btnCam.disabled=true; btnCam.textContent='Meminta izin...';
+    try{
+      const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+      stopCamera(); camStream=s; cam.srcObject=s;
+      await cam.play().catch(()=>{});
+      mode='kamera'; updateModeUI();
+      camMsg.classList.add('hidden');
+      addLog('↓','LOG,Kamera aktif · environment');
+      if(!running) start();
+    }catch(err){
+      mode='simulasi'; updateModeUI();
+      showCamMsg('Kamera tidak dapat dibuka (halaman file:// atau izin ditolak). Tenang — MODE SIMULASI sudah aktif: klik kartu warna di kanan untuk memilih target.');
+      if(!running) start();
+    }finally{
+      btnCam.disabled=false; btnCam.textContent='Aktifkan Kamera';
+    }
+  }
+
+  /* ---------- Start / stop ---------- */
+  function start(){
+    if(running) return;
+    running=true; lastFrame=0; fps=30;
+    addLog('↓','LOG,AimBot Warna siap');
+    addLog('↑','T,0,0,0,0');
+    updateModeUI();
+    rafId=requestAnimationFrame(loop);
+  }
+  function stop(){
+    running=false;
+    if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
+    stopCamera();                              // stop tracks + cancel rAF
+    mode='simulasi';
+    votes=[]; gStable=null; gActive=null; lastActive=null; gConf=0; lastPlayed=null;
+    if(window.speechSynthesis) try{window.speechSynthesis.cancel();}catch(e){}
+    updateModeUI(); updateDOM(); paintIdle();
+    addLog('↓','LOG,Berhenti · track & animasi dihentikan');
+  }
+
+  /* ---------- Build legend + chapters ---------- */
+  function buildUI(){
+    const sw=$('swatches'), tb=$('legendBody');
+    COLORS.forEach(c=>{
+      const b=document.createElement('div');
+      b.className='swatch'; b.dataset.key=c.key;
+      b.innerHTML=`<span class="cc" style="background:${c.hex}"></span>
+        <span><span class="nm">${c.name}</span><br><span class="sub">${c.freq} Hz · ${c.beeps} bip</span></span>`;
+      b.addEventListener('click',()=>selectTarget(c.key));
+      sw.appendChild(b);
+
+      const tr=document.createElement('tr'); tr.dataset.key=c.key;
+      tr.innerHTML=`<td class="lid">${c.id}</td>
+        <td><span class="dot" style="background:${c.hex}"></span>${c.name}</td>
+        <td class="lnada">${c.freq} Hz · ${c.beeps} bip</td>`;
+      tr.addEventListener('click',()=>selectTarget(c.key));
+      tb.appendChild(tr);
+    });
+    const chapters=['Python Environment Setup','OpenCV Image Processing','YOLO Object Detection',
+      'Object Tracking / IDE Arduino Setup','Hardware Setup','Serial Data Communication','PID Controller'];
+    const box=$('chapters');
+    chapters.forEach((c,i)=>{ const s=document.createElement('span'); s.textContent=`${i+1}. ${c}`; box.appendChild(s); });
+    highlightLegend();
+  }
+  function selectTarget(key){
+    if(mode==='kamera'){
+      showCamMsg('Mode kamera aktif: target berasal dari warna nyata di depan kamera. Tekan HENTIKAN untuk kembali ke MODE SIMULASI.');
+      return;
+    }
+    simColor=key; autoRandom=false;
+    btnRandom.classList.remove('active'); btnRandom.textContent='Warna acak: nonaktif';
+    highlightLegend();
+    addLog('↓',`LOG,TARGET,${BY_KEY[key].id},${BY_KEY[key].name}`);
+  }
+
+  /* ---------- Wiring ---------- */
+  btnSound.addEventListener('click',unlockSound);
+  btnCam.addEventListener('click',activateCamera);
+  btnStart.addEventListener('click',start);
+  btnStop.addEventListener('click',stop);
+  btnRandom.addEventListener('click',()=>{
+    if(testActive) return;
+    autoRandom=!autoRandom;
+    btnRandom.classList.toggle('active',autoRandom);
+    btnRandom.textContent=autoRandom?'Warna acak: aktif':'Warna acak: nonaktif';
+    nextRandom=performance.now()+400;
+  });
+  btnTest.addEventListener('click',startTest);
+  modeSound.addEventListener('change',()=>addLog('↓',`LOG,MODE_SUARA,${modeSound.value.toUpperCase()}`));
+  sens.addEventListener('input',()=>$('sensVal').textContent=sens.value+'%');
+  area.addEventListener('input',()=>$('areaVal').textContent=area.value+' px');
+  mute.addEventListener('change',()=>{
+    if(masterGain) masterGain.gain.value=mute.checked?0:.9;
+    if(mute.checked && window.speechSynthesis) try{window.speechSynthesis.cancel();}catch(e){}
+    addLog('↓',`LOG,MUTE,${mute.checked?1:0}`);
+  });
+
+  /* ---------- Boot: usable demo immediately, no hardware ---------- */
+  buildUI();
+  updateModeUI();
+  addLog('↓','LOG,AimBot Warna siap');
+  addLog('↓','LOG,Boot,MODE_SIMULASI,6_WARNA');
+  nextRandom=performance.now()+2200;
+  start();                                  // auto-run simulation; audio waits for user gesture
+})();
+</script>
+</body>
+</html>

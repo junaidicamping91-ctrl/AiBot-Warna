@@ -1,0 +1,13 @@
+# Dependensi untuk deploy ONLINE (Streamlit Community Cloud).
+# Perbedaan dari requirements.txt: OpenCV memakai build HEADLESS supaya tidak
+# butuh libGL / Qt yang tidak ada di container cloud. Pipeline deteksi HSV,
+# kontur, voting, PID, HUD, dan audio tetap 100% identik.
+#
+# Di share.streamlit.io -> Advanced settings -> Python dependencies file:
+#     requirements-streamlit.txt
+
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+pillow>=10.0.0
+pyserial>=3.5
+streamlit>=1.33

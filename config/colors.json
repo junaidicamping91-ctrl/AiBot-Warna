@@ -1,0 +1,86 @@
+{
+  "meta": {
+    "note": "Rentang HSV memakai skala OpenCV: H 0-179, S 0-255, V 0-255. Dua rentang dipakai untuk MERAH karena hue wrap-around di 0/179.",
+    "cara_kalibrasi": "python python/tools/calibrate_color.py --camera 0 --color-key merah"
+  },
+  "colors": [
+    {
+      "id": 1,
+      "key": "merah",
+      "name": "MERAH",
+      "speech": "merah",
+      "hex": "#E53935",
+      "bgr": [45, 60, 230],
+      "rgb": [255, 25, 25],
+      "tone_hz": 440,
+      "beeps": 1,
+      "hsv": [[0, 120, 100], [9, 255, 255]],
+      "hsv2": [[170, 120, 100], [179, 255, 255]]
+    },
+    {
+      "id": 2,
+      "key": "hijau",
+      "name": "HIJAU",
+      "speech": "hijau",
+      "hex": "#2EAD4B",
+      "bgr": [75, 173, 46],
+      "rgb": [25, 255, 60],
+      "tone_hz": 523,
+      "beeps": 2,
+      "hsv": [[36, 100, 70], [85, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 3,
+      "key": "biru",
+      "name": "BIRU",
+      "speech": "biru",
+      "hex": "#2F6BEA",
+      "bgr": [234, 107, 47],
+      "rgb": [25, 90, 255],
+      "tone_hz": 587,
+      "beeps": 3,
+      "hsv": [[95, 110, 70], [130, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 4,
+      "key": "kuning",
+      "name": "KUNING",
+      "speech": "kuning",
+      "hex": "#F2C21C",
+      "bgr": [28, 194, 242],
+      "rgb": [255, 210, 25],
+      "tone_hz": 659,
+      "beeps": 4,
+      "hsv": [[20, 110, 110], [35, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 5,
+      "key": "oranye",
+      "name": "ORANYE",
+      "speech": "oranye",
+      "hex": "#F58220",
+      "bgr": [32, 130, 245],
+      "rgb": [255, 130, 20],
+      "tone_hz": 698,
+      "beeps": 5,
+      "hsv": [[10, 130, 130], [19, 255, 255]],
+      "hsv2": null
+    },
+    {
+      "id": 6,
+      "key": "ungu",
+      "name": "UNGU",
+      "speech": "ungu",
+      "hex": "#A334D6",
+      "bgr": [214, 52, 163],
+      "rgb": [170, 45, 255],
+      "tone_hz": 784,
+      "beeps": 6,
+      "hsv": [[131, 80, 60], [165, 255, 255]],
+      "hsv2": null
+    }
+  ]
+}
